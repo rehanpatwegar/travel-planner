@@ -162,6 +162,27 @@ GlobeTrotter uses Supabase PostgreSQL with Row Level Security (RLS) enabled on a
 
 ---
 
+## Authentication Setup (Supabase Auth)
+
+GlobeTrotter uses Supabase Auth with server-side cookie verification and SSR middleware.
+
+### Required Supabase Dashboard Settings:
+1. Open your project on the [Supabase Dashboard](https://supabase.com/dashboard).
+2. Navigate to **Authentication → URL Configuration**.
+3. **Site URL:**
+   - Set to `http://localhost:3000` for local development.
+   - Set to your custom domain or Vercel URL in production.
+4. **Redirect URLs:** Add the following URLs to the whitelist:
+   - `http://localhost:3000/auth/callback`
+   - `http://localhost:3000/reset-password`
+   - `http://localhost:3000/dashboard`
+5. **Email Auth Configuration:**
+   - Under **Authentication → Providers → Email**, ensure Email provider is enabled.
+   - If *Confirm email* is enabled, users will receive a verification email upon signup before their session is activated.
+   - If *Confirm email* is disabled, users will be logged in immediately upon registration.
+
+---
+
 ## Development Commands
 
 | Command | Description |
@@ -190,7 +211,7 @@ GlobeTrotter is developed through a structured, modular plan:
 |---|---|---|
 | **Part 1** | Project Setup, Next.js App Router, Tailwind CSS, shadcn/ui, Supabase Client & SaaS Landing Page | ✅ Completed |
 | **Part 2** | Normalized Database Schema (`db/schema.sql`), Seed Data (`db/seed.sql`) & Enhanced Documentation | ✅ Completed |
-| **Part 3** | Authentication (Supabase Auth Login, Signup, Forgot Password & Profiles) | ⏳ Planned |
+| **Part 3** | Authentication (Supabase Auth Login, Signup, Forgot Password & Profiles) | ✅ Completed |
 | **Part 4** | Dashboard, Trip Creation & My Trips Management | ⏳ Planned |
 | **Part 5** | City & Activity Catalog Search & Filters | ⏳ Planned |
 | **Part 6** | Day-by-Day Itinerary Builder & Drag-and-Drop Sequencing | ⏳ Planned |

@@ -41,6 +41,11 @@ export default function DashboardPage() {
                 Find Cities
               </Button>
             </Link>
+            <Link href="/profile">
+              <Button variant="ghost" size="sm" className="text-xs">
+                Profile
+              </Button>
+            </Link>
             <Link href="/trips/new">
               <Button size="sm" className="bg-blue-600 hover:bg-blue-700 text-white text-xs gap-1.5 shadow-sm">
                 <Plus className="h-4 w-4" />
