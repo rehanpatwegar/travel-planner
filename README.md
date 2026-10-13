@@ -56,7 +56,7 @@ Planning complex multi-city trips often forces travelers to juggle disconnected 
 | **AI Intelligence** | Google Gemini API (strictly server-side) |
 | **Charts & Visualizations** | [Recharts](https://recharts.org/) *(Planned for Part 8)* |
 | **Calendar Scheduling** | [FullCalendar](https://fullcalendar.io/) *(Planned for Part 7)* |
-| **Drag & Drop** | [dnd-kit](https://dndkit.com/) *(Planned for Part 6)* |
+| **Drag & Drop** | [dnd-kit](https://dndkit.com/) |
 | **Hosting & Deployment** | [Vercel](https://vercel.com/) |
 
 ---
@@ -213,8 +213,8 @@ GlobeTrotter is developed through a structured, modular plan:
 | **Part 2** | Normalized Database Schema (`db/schema.sql`), Seed Data (`db/seed.sql`) & Enhanced Documentation | ✅ Completed |
 | **Part 3** | Authentication (Supabase Auth Login, Signup, Forgot Password & Profiles) | ✅ Completed |
 | **Part 4** | Dashboard, Trip Creation & My Trips Management | ✅ Completed |
-| **Part 5** | City & Activity Catalog Search & Filters | ⏳ Planned |
-| **Part 6** | Day-by-Day Itinerary Builder & Drag-and-Drop Sequencing | ⏳ Planned |
+| **Part 5** | City & Activity Catalog Search & Filters | ✅ Completed |
+| **Part 6** | Day-by-Day Itinerary Builder & Drag-and-Drop Sequencing | ✅ Completed |
 | **Part 7** | Detailed Itinerary View & Interactive Calendar Timeline | ⏳ Planned |
 | **Part 8** | Budget Analytics, Expense Logging & Visual Charts | ⏳ Planned |
 | **Part 9** | Public Read-Only Sharing Links & Profile Settings | ⏳ Planned |

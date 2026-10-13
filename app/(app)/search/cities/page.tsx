@@ -1,8 +1,19 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import Link from "next/link";
-import { Search, MapPin, DollarSign, Star, Compass, ArrowLeft, Layers } from "lucide-react";
+import { useSearchParams } from "next/navigation";
+import {
+  Search,
+  MapPin,
+  DollarSign,
+  Star,
+  Compass,
+  ArrowLeft,
+  Layers,
+  CheckCircle2,
+  Loader2,
+} from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -22,11 +33,16 @@ interface City {
   is_popular?: boolean;
 }
 
-export default function SearchCitiesPage() {
+function SearchCitiesContent() {
+  const searchParams = useSearchParams();
+  const tripId = searchParams.get("tripId");
+
   const [cities, setCities] = useState<City[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedRegion, setSelectedRegion] = useState<string>("All");
+  const [addingId, setAddingId] = useState<string | null>(null);
+  const [addedIds, setAddedIds] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     async function loadCities() {
@@ -45,7 +61,10 @@ export default function SearchCitiesPage() {
     loadCities();
   }, []);
 
-  const regions = ["All", ...Array.from(new Set(cities.map((c) => c.region).filter(Boolean) as string[]))];
+  const regions = [
+    "All",
+    ...Array.from(new Set(cities.map((c) => c.region).filter(Boolean) as string[])),
+  ];
 
   const filteredCities = cities.filter((city) => {
     const matchesSearch =
@@ -55,40 +74,96 @@ export default function SearchCitiesPage() {
     return matchesSearch && matchesRegion;
   });
 
+  async function handleAddStopToTrip(city: City) {
+    if (!tripId) return;
+    setAddingId(city.id);
+    try {
+      const res = await fetch(`/api/trips/${tripId}/stops`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          city_id: city.id,
+          custom_city_name: city.name,
+        }),
+      });
+      if (res.ok) {
+        setAddedIds((prev) => ({ ...prev, [city.id]: true }));
+      }
+    } catch (err) {
+      console.error("Failed to add stop:", err);
+    } finally {
+      setAddingId(null);
+    }
+  }
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
       {/* Top Header */}
       <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/90 backdrop-blur-md">
         <div className="container mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6">
           <div className="flex items-center gap-3">
-            <Link href="/" className="flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 text-white">
-                <Compass className="h-4 w-4" />
-              </div>
-              <span className="font-bold tracking-tight text-slate-900">GlobeTrotter</span>
-            </Link>
+            {tripId ? (
+              <Link
+                href={`/trips/${tripId}/builder`}
+                className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-800"
+              >
+                <ArrowLeft className="h-3.5 w-3.5" />
+                Back to Builder
+              </Link>
+            ) : (
+              <Link href="/" className="flex items-center gap-2">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 text-white">
+                  <Compass className="h-4 w-4" />
+                </div>
+                <span className="font-bold tracking-tight text-slate-900">GlobeTrotter</span>
+              </Link>
+            )}
             <span className="text-slate-300">/</span>
             <span className="text-sm font-medium text-slate-600">Explore Cities</span>
           </div>
 
           <div className="flex items-center gap-2">
-            <Link href="/search/activities">
+            <Link href={tripId ? `/search/activities?tripId=${tripId}` : "/search/activities"}>
               <Button variant="outline" size="sm" className="gap-1.5 text-xs">
                 <Layers className="h-3.5 w-3.5" />
                 Browse Activities
               </Button>
             </Link>
-            <Link href="/dashboard">
-              <Button size="sm" className="bg-blue-600 hover:bg-blue-700 text-white text-xs">
-                Dashboard
-              </Button>
-            </Link>
+            {tripId ? (
+              <Link href={`/trips/${tripId}/builder`}>
+                <Button size="sm" className="bg-blue-600 hover:bg-blue-700 text-white text-xs">
+                  Return to Builder
+                </Button>
+              </Link>
+            ) : (
+              <Link href="/dashboard">
+                <Button size="sm" className="bg-blue-600 hover:bg-blue-700 text-white text-xs">
+                  Dashboard
+                </Button>
+              </Link>
+            )}
           </div>
         </div>
       </header>
 
       {/* Main Content */}
       <main className="container mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:py-12">
+        {tripId && (
+          <div className="mb-6 rounded-xl border border-blue-200 bg-blue-50 p-4 text-xs text-blue-800 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <MapPin className="h-4 w-4 text-blue-600 shrink-0" />
+              <span>
+                Adding destinations to your trip route. Click <strong>&quot;Add to Route&quot;</strong> on any destination to add it as a stop.
+              </span>
+            </div>
+            <Link href={`/trips/${tripId}/builder`}>
+              <Button size="sm" className="text-xs h-7 bg-blue-600 text-white">
+                View Builder
+              </Button>
+            </Link>
+          </div>
+        )}
+
         {/* Page Title & Search Bar */}
         <div className="mx-auto max-w-3xl text-center">
           <Badge variant="outline" className="border-blue-200 bg-blue-50 text-blue-700 text-xs">
@@ -98,75 +173,63 @@ export default function SearchCitiesPage() {
             Search Destinations
           </h1>
           <p className="mt-2 text-sm text-slate-600">
-            Find cities for your multi-city route, inspect daily expense averages, and plan stops.
+            Find iconic cities and hidden gems with accurate daily cost estimates, location insights, and key travel highlights.
           </p>
 
-          {/* Search Input Box */}
-          <div className="relative mt-6">
-            <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            <Input
-              type="text"
-              placeholder="Search by city name or country (e.g. Paris, Switzerland)..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10 h-11 bg-white border-slate-200 text-sm shadow-sm"
-            />
+          <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center">
+            <div className="relative flex-1">
+              <Search className="absolute left-3.5 top-3 h-4 w-4 text-slate-400" />
+              <Input
+                type="text"
+                placeholder="Search by city name, country, or keyword..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-10 h-11 bg-white text-sm shadow-xs border-slate-200"
+              />
+            </div>
           </div>
 
-          {/* Region Filter Chips */}
-          {regions.length > 1 && (
-            <div className="mt-4 flex flex-wrap items-center justify-center gap-1.5">
-              {regions.map((region) => (
-                <button
-                  key={region}
-                  onClick={() => setSelectedRegion(region)}
-                  className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
-                    selectedRegion === region
-                      ? "bg-blue-600 text-white"
-                      : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-100"
-                  }`}
-                >
-                  {region}
-                </button>
-              ))}
-            </div>
-          )}
+          {/* Region Filter Pills */}
+          <div className="mt-5 flex flex-wrap items-center justify-center gap-1.5">
+            {regions.map((region) => (
+              <button
+                key={region}
+                type="button"
+                onClick={() => setSelectedRegion(region)}
+                className={`rounded-full px-3 py-1.5 text-xs font-medium transition-all ${
+                  selectedRegion === region
+                    ? "bg-blue-600 text-white shadow-xs"
+                    : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-50"
+                }`}
+              >
+                {region}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Cities Grid */}
         <div className="mt-10">
           {loading ? (
             <div className="flex flex-col items-center justify-center py-20 text-slate-500">
-              <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-600 border-t-transparent"></div>
-              <p className="mt-4 text-sm font-medium">Loading destination catalog...</p>
+              <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+              <p className="mt-3 text-sm">Loading destinations...</p>
             </div>
           ) : filteredCities.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-12 text-center">
               <MapPin className="mx-auto h-8 w-8 text-slate-400" />
-              <h3 className="mt-3 text-base font-semibold text-slate-900">No destinations found</h3>
+              <h3 className="mt-2 text-sm font-semibold text-slate-900">No destinations found</h3>
               <p className="mt-1 text-xs text-slate-500">
-                No cities match your search &ldquo;{searchQuery}&rdquo;. Try another destination or clear filters.
+                Try adjusting your search query or selecting a different region.
               </p>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  setSearchQuery("");
-                  setSelectedRegion("All");
-                }}
-                className="mt-4"
-              >
-                Clear Search
-              </Button>
             </div>
           ) : (
             <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
               {filteredCities.map((city) => (
                 <Card
                   key={city.id}
-                  className="group overflow-hidden border-slate-200 bg-white transition-all hover:border-blue-200 hover:shadow-lg"
+                  className="group flex flex-col justify-between overflow-hidden border-slate-200 bg-white transition-all hover:border-blue-200 hover:shadow-md"
                 >
-                  {/* City Image */}
                   <div className="relative h-48 w-full overflow-hidden bg-slate-100">
                     <img
                       src={city.image_url || "https://images.unsplash.com/photo-1488646953014-85cb44e25828?auto=format&fit=crop&w=800&q=80"}
@@ -175,8 +238,13 @@ export default function SearchCitiesPage() {
                       loading="lazy"
                     />
                     <div className="absolute top-3 left-3 flex items-center gap-1.5">
+                      {city.is_popular && (
+                        <Badge className="bg-amber-500 text-white text-[10px] font-semibold shadow-sm">
+                          Popular
+                        </Badge>
+                      )}
                       {city.region && (
-                        <Badge className="bg-white/90 text-slate-800 text-[10px] font-semibold backdrop-blur-sm shadow-sm hover:bg-white">
+                        <Badge className="bg-slate-900/80 text-white text-[10px] font-semibold backdrop-blur-sm shadow-sm">
                           {city.region}
                         </Badge>
                       )}
@@ -216,14 +284,39 @@ export default function SearchCitiesPage() {
                     )}
 
                     <div className="mt-4 pt-4 border-t border-slate-100 flex items-center justify-between">
-                      <Link href={`/search/activities?city=${encodeURIComponent(city.name)}`} className="text-xs font-medium text-blue-600 hover:text-blue-800">
+                      <Link
+                        href={`/search/activities?city=${encodeURIComponent(city.name)}${tripId ? `&tripId=${tripId}` : ""}`}
+                        className="text-xs font-medium text-blue-600 hover:text-blue-800"
+                      >
                         View Activities →
                       </Link>
-                      <Link href={`/trips/new?city=${encodeURIComponent(city.name)}`}>
-                        <Button size="sm" variant="outline" className="text-xs h-8">
-                          Add to Trip
-                        </Button>
-                      </Link>
+
+                      {tripId ? (
+                        addedIds[city.id] ? (
+                          <Button disabled size="sm" className="text-xs h-8 bg-emerald-600 text-white gap-1">
+                            <CheckCircle2 className="h-3.5 w-3.5" /> Added
+                          </Button>
+                        ) : (
+                          <Button
+                            size="sm"
+                            disabled={addingId === city.id}
+                            onClick={() => handleAddStopToTrip(city)}
+                            className="text-xs h-8 bg-blue-600 hover:bg-blue-700 text-white"
+                          >
+                            {addingId === city.id ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              "Add to Route"
+                            )}
+                          </Button>
+                        )
+                      ) : (
+                        <Link href={`/trips/new?city=${encodeURIComponent(city.name)}`}>
+                          <Button size="sm" variant="outline" className="text-xs h-8">
+                            Add to Trip
+                          </Button>
+                        </Link>
+                      )}
                     </div>
                   </CardContent>
                 </Card>
@@ -236,3 +329,10 @@ export default function SearchCitiesPage() {
   );
 }
 
+export default function SearchCitiesPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-slate-50 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-blue-600" /></div>}>
+      <SearchCitiesContent />
+    </Suspense>
+  );
+}
