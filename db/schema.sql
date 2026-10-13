@@ -326,57 +326,49 @@ create policy "Activities are viewable by all users"
 -- Users can manage their own trips.
 -- Publicly shared trips can be viewed in read-only mode by anyone.
 -- ------------------------------------------------------------------------------
-create policy "Users can view their own trips or active shared trips"
-  on public.trips for select
-  using (
-    auth.uid() = user_id
-    or (
-      is_public = true
-      and exists (
-        select 1 from public.shared_trips
-        where shared_trips.trip_id = trips.id
-          and shared_trips.is_active = true
-          and (shared_trips.expires_at is null or shared_trips.expires_at > now())
-      )
-    )
-  );
+-- Clean non-recursive policies for trips
+CREATE POLICY "trips_select_policy" ON trips
+FOR SELECT
+USING (
+  user_id = auth.uid() OR is_public = true
+);
 
-create policy "Users can create their own trips"
-  on public.trips for insert
-  with check (auth.uid() = user_id);
+CREATE POLICY "trips_insert_policy" ON trips
+FOR INSERT
+WITH CHECK (
+  user_id = auth.uid()
+);
 
-create policy "Users can update their own trips"
-  on public.trips for update
-  using (auth.uid() = user_id);
+CREATE POLICY "trips_update_policy" ON trips
+FOR UPDATE
+USING (
+  user_id = auth.uid()
+)
+WITH CHECK (
+  user_id = auth.uid()
+);
 
-create policy "Users can delete their own trips"
-  on public.trips for delete
-  using (auth.uid() = user_id);
+CREATE POLICY "trips_delete_policy" ON trips
+FOR DELETE
+USING (
+  user_id = auth.uid()
+);
 
 -- ------------------------------------------------------------------------------
 -- Trip Stops Policies
 -- Managed by the trip owner. Publicly viewable if the trip is shared.
 -- ------------------------------------------------------------------------------
-create policy "Stops are viewable by trip owner or on shared trips"
-  on public.trip_stops for select
-  using (
-    exists (
-      select 1 from public.trips
-      where trips.id = trip_stops.trip_id
-        and (
-          trips.user_id = auth.uid()
-          or (
-            trips.is_public = true
-            and exists (
-              select 1 from public.shared_trips
-              where shared_trips.trip_id = trips.id
-                and shared_trips.is_active = true
-                and (shared_trips.expires_at is null or shared_trips.expires_at > now())
-            )
-          )
-        )
-    )
-  );
+DROP POLICY IF EXISTS "Stops are viewable by trip owner or on shared trips" ON public.trip_stops;
+
+CREATE POLICY "trip_stops_select_policy" ON public.trip_stops
+FOR SELECT
+USING (
+  EXISTS (
+    SELECT 1 FROM public.trips
+    WHERE trips.id = trip_stops.trip_id
+      AND (trips.user_id = auth.uid() OR trips.is_public = true)
+  )
+);
 
 create policy "Trip owner can insert stops"
   on public.trip_stops for insert
