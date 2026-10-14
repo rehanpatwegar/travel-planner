@@ -1,16 +1,9 @@
 import Link from "next/link";
-import {
-  Compass,
-  ArrowLeft,
-  CalendarDays,
-  Clock,
-  MapPin,
-  ChevronLeft,
-  ChevronRight,
-} from "lucide-react";
+import { redirect } from "next/navigation";
+import { AlertCircle, ArrowLeft } from "lucide-react";
+import { createClient } from "@/lib/supabase/server";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { TripCalendarClient } from "@/components/trip/TripCalendarClient";
 
 export default async function TripCalendarPage({
   params,
@@ -18,128 +11,102 @@ export default async function TripCalendarPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
+  const supabase = await createClient();
+
+  // Verify authentication
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+
+  if (authError || !user) {
+    redirect(`/login?redirect=/trips/${id}/calendar`);
+  }
+
+  // Fetch the trip
+  const { data: trip, error: tripError } = await supabase
+    .from("trips")
+    .select("*")
+    .eq("id", id)
+    .single();
+
+  if (tripError || !trip) {
+    return (
+      <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col items-center justify-center p-4">
+        <div className="max-w-md w-full rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-xs">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-rose-50 text-rose-600">
+            <AlertCircle className="h-6 w-6" />
+          </div>
+          <h2 className="mt-4 text-xl font-bold text-slate-900">Trip Not Found</h2>
+          <p className="mt-2 text-xs text-slate-500 leading-relaxed">
+            The requested trip could not be found or you may not have permission to view it.
+          </p>
+          <div className="mt-6 flex justify-center gap-3">
+            <Link href="/trips">
+              <Button size="sm" variant="outline" className="text-xs">
+                Back to Trips
+              </Button>
+            </Link>
+            <Link href="/dashboard">
+              <Button size="sm" className="bg-blue-600 hover:bg-blue-700 text-white text-xs">
+                Dashboard
+              </Button>
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Verify authorization
+  if (trip.user_id !== user.id && !trip.is_public) {
+    return (
+      <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col items-center justify-center p-4">
+        <div className="max-w-md w-full rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-xs">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-amber-50 text-amber-600">
+            <AlertCircle className="h-6 w-6" />
+          </div>
+          <h2 className="mt-4 text-xl font-bold text-slate-900">Access Restricted</h2>
+          <p className="mt-2 text-xs text-slate-500 leading-relaxed">
+            You do not have permission to view the calendar for this private trip.
+          </p>
+          <div className="mt-6 flex justify-center gap-3">
+            <Link href="/trips">
+              <Button size="sm" variant="outline" className="text-xs">
+                My Trips
+              </Button>
+            </Link>
+            <Link href="/dashboard">
+              <Button size="sm" className="bg-blue-600 hover:bg-blue-700 text-white text-xs">
+                Dashboard
+              </Button>
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Fetch stops
+  const { data: stops } = await supabase
+    .from("trip_stops")
+    .select("*, cities(*)")
+    .eq("trip_id", id)
+    .order("order_index", { ascending: true });
+
+  // Fetch itinerary items
+  const { data: items } = await supabase
+    .from("itinerary_items")
+    .select("*, activities(*)")
+    .eq("trip_id", id)
+    .order("day_number", { ascending: true })
+    .order("order_index", { ascending: true });
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900">
-      {/* Top Header */}
-      <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/90 backdrop-blur-md">
-        <div className="container mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6">
-          <div className="flex items-center gap-3">
-            <Link href={`/trips/${id}/builder`} className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-800">
-              <ArrowLeft className="h-3.5 w-3.5" />
-              Builder
-            </Link>
-            <span className="text-slate-300">/</span>
-            <span className="font-bold text-sm text-slate-900">Calendar Timeline</span>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <Link href={`/trips/${id}/view`}>
-              <Button variant="outline" size="sm" className="text-xs h-8">
-                Itinerary View
-              </Button>
-            </Link>
-            <Link href={`/trips/${id}/budget`}>
-              <Button variant="outline" size="sm" className="text-xs h-8">
-                Budget
-              </Button>
-            </Link>
-          </div>
-        </div>
-      </header>
-
-      {/* Main Calendar View */}
-      <main className="container mx-auto max-w-7xl px-4 py-8 sm:px-6">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-slate-200 pb-5">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight text-slate-900">
-              Trip Calendar
-            </h1>
-            <p className="mt-1 text-xs text-slate-500">
-              June 2026 • Western Europe Discovery (10 Days)
-            </p>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" className="text-xs h-8">
-              <ChevronLeft className="h-3.5 w-3.5 mr-1" /> Prev
-            </Button>
-            <Button variant="outline" size="sm" className="text-xs h-8">
-              Next <ChevronRight className="h-3.5 w-3.5 ml-1" />
-            </Button>
-          </div>
-        </div>
-
-        {/* Calendar Timeline Grid */}
-        <div className="mt-8 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-            {/* Day 1 */}
-            <div className="rounded-lg border border-slate-200 bg-slate-50/50 p-3">
-              <div className="text-xs font-bold text-blue-600">Day 1 • Jun 12</div>
-              <div className="text-xs font-semibold text-slate-900 mt-1">Paris Arrival</div>
-              <div className="mt-3 space-y-2">
-                <div className="rounded bg-white p-2 text-xs border border-slate-100 shadow-2xs">
-                  <div className="font-medium text-slate-900">Louvre Museum</div>
-                  <div className="text-[10px] text-slate-400">10:00 AM</div>
-                </div>
-                <div className="rounded bg-white p-2 text-xs border border-slate-100 shadow-2xs">
-                  <div className="font-medium text-slate-900">Seine Cruise</div>
-                  <div className="text-[10px] text-slate-400">06:00 PM</div>
-                </div>
-              </div>
-            </div>
-
-            {/* Day 2 */}
-            <div className="rounded-lg border border-slate-200 bg-slate-50/50 p-3">
-              <div className="text-xs font-bold text-blue-600">Day 2 • Jun 13</div>
-              <div className="text-xs font-semibold text-slate-900 mt-1">Paris Sights</div>
-              <div className="mt-3 space-y-2">
-                <div className="rounded bg-white p-2 text-xs border border-slate-100 shadow-2xs">
-                  <div className="font-medium text-slate-900">Marais Food Walk</div>
-                  <div className="text-[10px] text-slate-400">02:00 PM</div>
-                </div>
-              </div>
-            </div>
-
-            {/* Day 3 */}
-            <div className="rounded-lg border border-slate-200 bg-slate-50/50 p-3">
-              <div className="text-xs font-bold text-blue-600">Day 3 • Jun 14</div>
-              <div className="text-xs font-semibold text-slate-900 mt-1">Paris Architecture</div>
-              <div className="mt-3 space-y-2">
-                <div className="rounded bg-white p-2 text-xs border border-slate-100 shadow-2xs">
-                  <div className="font-medium text-slate-900">Eiffel Tower Summit</div>
-                  <div className="text-[10px] text-slate-400">04:00 PM</div>
-                </div>
-              </div>
-            </div>
-
-            {/* Day 4 */}
-            <div className="rounded-lg border border-slate-200 bg-slate-50/50 p-3">
-              <div className="text-xs font-bold text-indigo-600">Day 4 • Jun 15</div>
-              <div className="text-xs font-semibold text-slate-900 mt-1">Transit to Lucerne</div>
-              <div className="mt-3 space-y-2">
-                <div className="rounded bg-indigo-50 p-2 text-xs border border-indigo-100 text-indigo-900">
-                  <div className="font-medium">TGV Lyria Express</div>
-                  <div className="text-[10px] text-indigo-600">09:15 AM - 01:30 PM</div>
-                </div>
-              </div>
-            </div>
-
-            {/* Day 5 */}
-            <div className="rounded-lg border border-slate-200 bg-slate-50/50 p-3">
-              <div className="text-xs font-bold text-emerald-600">Day 5 • Jun 16</div>
-              <div className="text-xs font-semibold text-slate-900 mt-1">Lucerne Alpine</div>
-              <div className="mt-3 space-y-2">
-                <div className="rounded bg-white p-2 text-xs border border-slate-100 shadow-2xs">
-                  <div className="font-medium text-slate-900">Mount Pilatus Climb</div>
-                  <div className="text-[10px] text-slate-400">09:00 AM</div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </main>
-    </div>
+    <TripCalendarClient
+      trip={trip}
+      items={items || []}
+      stops={stops || []}
+    />
   );
 }
-

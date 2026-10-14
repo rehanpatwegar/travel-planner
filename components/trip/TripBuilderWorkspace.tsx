@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import {
   DndContext,
@@ -55,9 +55,14 @@ export function TripBuilderWorkspace({
   initialStops,
   initialItems,
 }: TripBuilderWorkspaceProps) {
+  const [isMounted, setIsMounted] = useState(false);
   const [trip, setTrip] = useState<Trip>(initialTrip);
   const [stops, setStops] = useState<TripStop[]>(initialStops);
   const [items, setItems] = useState<ItineraryItem[]>(initialItems);
+
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
   // Drag and drop state
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -723,6 +728,7 @@ export function TripBuilderWorkspace({
 
         {/* Drag-and-Drop Workspace */}
         <DndContext
+          id="globe-trotter-builder"
           sensors={sensors}
           collisionDetection={closestCorners}
           onDragStart={handleDragStart}
