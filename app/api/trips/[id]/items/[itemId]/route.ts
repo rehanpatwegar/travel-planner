@@ -79,12 +79,37 @@ export async function PATCH(
       }
     }
 
+    if (body.date !== undefined) {
+      if (body.date === null || body.date === "") {
+        updatePayload.date = null;
+      } else if (typeof body.date === "string") {
+        const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+        if (!dateRegex.test(body.date) || isNaN(Date.parse(body.date))) {
+          return NextResponse.json(
+            { error: "Invalid date format. Expected YYYY-MM-DD" },
+            { status: 400 }
+          );
+        }
+        updatePayload.date = body.date;
+      }
+    }
+
     if (body.start_time !== undefined) {
-      updatePayload.start_time = body.start_time || null;
+      if (!body.start_time) {
+        updatePayload.start_time = null;
+      } else {
+        const timeVal = String(body.start_time).trim();
+        updatePayload.start_time = timeVal.length === 5 ? `${timeVal}:00` : timeVal;
+      }
     }
 
     if (body.end_time !== undefined) {
-      updatePayload.end_time = body.end_time || null;
+      if (!body.end_time) {
+        updatePayload.end_time = null;
+      } else {
+        const timeVal = String(body.end_time).trim();
+        updatePayload.end_time = timeVal.length === 5 ? `${timeVal}:00` : timeVal;
+      }
     }
 
     if (body.day_number !== undefined) {

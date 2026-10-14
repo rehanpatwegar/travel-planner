@@ -97,6 +97,7 @@ export async function POST(
       currency: currency || "USD",
       start_time: start_time || null,
       end_time: end_time || null,
+      date: body.date ? String(body.date) : null,
       notes: notes ? String(notes).trim() : null,
       trip_stop_id: trip_stop_id || null,
       activity_id: activity_id || null,
