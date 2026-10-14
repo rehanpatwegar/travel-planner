@@ -64,3 +64,121 @@ export async function GET(
   }
 }
 
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params;
+    const supabase = await createClient();
+
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    // Verify trip ownership
+    const { data: trip, error: tripError } = await supabase
+      .from("trips")
+      .select("id, user_id")
+      .eq("id", id)
+      .single();
+
+    if (tripError || !trip) {
+      return NextResponse.json({ error: "Trip not found" }, { status: 404 });
+    }
+
+    if (trip.user_id !== user.id) {
+      return NextResponse.json(
+        { error: "Forbidden: You do not own this trip" },
+        { status: 403 }
+      );
+    }
+
+    const body = await request.json();
+    const updatePayload: Record<string, any> = {};
+
+    if (body.total_budget !== undefined) {
+      const budget = Number(body.total_budget);
+      if (isNaN(budget) || budget < 0) {
+        return NextResponse.json(
+          { error: "Planned budget must be a positive number or zero" },
+          { status: 400 }
+        );
+      }
+      if (budget > 100000000) {
+        return NextResponse.json(
+          { error: "Planned budget exceeds maximum allowed limit" },
+          { status: 400 }
+        );
+      }
+      updatePayload.total_budget = budget;
+    }
+
+    if (body.currency !== undefined) {
+      if (
+        typeof body.currency !== "string" ||
+        body.currency.trim().length < 2 ||
+        body.currency.trim().length > 3
+      ) {
+        return NextResponse.json(
+          { error: "Invalid currency code (e.g. USD, EUR, GBP)" },
+          { status: 400 }
+        );
+      }
+      updatePayload.currency = body.currency.trim().toUpperCase();
+    }
+
+    if (body.title !== undefined) {
+      if (typeof body.title !== "string" || !body.title.trim()) {
+        return NextResponse.json(
+          { error: "Title cannot be empty" },
+          { status: 400 }
+        );
+      }
+      updatePayload.title = body.title.trim();
+    }
+
+    if (body.description !== undefined) {
+      updatePayload.description = body.description
+        ? String(body.description).trim()
+        : null;
+    }
+
+    if (Object.keys(updatePayload).length === 0) {
+      return NextResponse.json(
+        { error: "No valid fields to update" },
+        { status: 400 }
+      );
+    }
+
+    const { data: updatedTrip, error: updateError } = await supabase
+      .from("trips")
+      .update(updatePayload)
+      .eq("id", id)
+      .select("*")
+      .single();
+
+    if (updateError) {
+      console.error("Failed to update trip:", updateError.message);
+      return NextResponse.json(
+        { error: "Failed to update trip" },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({ trip: updatedTrip });
+  } catch (error) {
+    console.error("Error updating trip:", error);
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
+  }
+}
+
+

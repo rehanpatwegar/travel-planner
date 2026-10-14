@@ -73,3 +73,18 @@ export interface Trip {
   created_at: string;
 }
 
+export interface Expense {
+  id: string;
+  trip_id: string;
+  itinerary_item_id?: string | null;
+  title: string;
+  amount: number;
+  currency: string;
+  category: string;
+  expense_date?: string | null;
+  payment_method?: string | null;
+  notes?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
