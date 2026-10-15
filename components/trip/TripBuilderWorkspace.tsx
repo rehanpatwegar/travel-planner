@@ -43,6 +43,8 @@ import { ActivitySearchModal } from "./ActivitySearchModal";
 import { AddStopModal } from "./AddStopModal";
 import { EditItemModal } from "./EditItemModal";
 import { AISmartSuggestModal } from "./AISmartSuggestModal";
+import { ItineraryOptimizerModal } from "@/components/ai/ItineraryOptimizerModal";
+import { TripAssistantDrawer } from "@/components/ai/TripAssistantDrawer";
 import { getCategoryBadgeClass, formatTimeRange } from "./SortableItineraryItem";
 
 interface TripBuilderWorkspaceProps {
@@ -75,6 +77,7 @@ export function TripBuilderWorkspace({
   // Modals state
   const [isActivityModalOpen, setIsActivityModalOpen] = useState(false);
   const [isAISuggestModalOpen, setIsAISuggestModalOpen] = useState(false);
+  const [isOptimizerModalOpen, setIsOptimizerModalOpen] = useState(false);
   const [targetDayForNewActivity, setTargetDayForNewActivity] = useState(1);
   const [isStopModalOpen, setIsStopModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<ItineraryItem | null>(null);
@@ -678,6 +681,15 @@ export function TripBuilderWorkspace({
               </Button>
 
               <Button
+                size="sm"
+                onClick={() => setIsOptimizerModalOpen(true)}
+                className="bg-purple-600 hover:bg-purple-700 text-white text-xs h-8.5 gap-1.5 shadow-xs font-semibold"
+              >
+                <Sparkles className="h-3.5 w-3.5 text-purple-200" />
+                ✨ AI Optimizer
+              </Button>
+
+              <Button
                 variant="outline"
                 size="sm"
                 onClick={() => setExtraDays((prev) => prev + 1)}
@@ -834,6 +846,23 @@ export function TripBuilderWorkspace({
           setItems((prev) => [...prev, ...newItems]);
           setSaveStatus("saved");
         }}
+      />
+
+      <ItineraryOptimizerModal
+        isOpen={isOptimizerModalOpen}
+        onClose={() => setIsOptimizerModalOpen(false)}
+        tripId={trip.id}
+        tripTitle={trip.title}
+        totalActivities={items.length}
+        onSuccess={(updatedItems) => {
+          setItems(updatedItems);
+          setSaveStatus("saved");
+        }}
+      />
+
+      <TripAssistantDrawer
+        tripId={trip.id}
+        tripTitle={trip.title}
       />
 
       <AddStopModal

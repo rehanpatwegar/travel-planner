@@ -412,8 +412,13 @@ Return ONLY a valid JSON object matching this schema:
   ]
 }`;
 
-  // Try gemini-2.5-flash first, then gemini-1.5-flash
-  const modelsToTry = ["gemini-2.5-flash", "gemini-1.5-flash"];
+  // Try active gemini-3.8-flash, gemini-3.7-flash, gemini-3.5-flash, gemini-flash-latest
+  const modelsToTry = [
+    "gemini-3.8-flash",
+    "gemini-3.7-flash",
+    "gemini-3.5-flash",
+    "gemini-flash-latest",
+  ];
 
   for (const model of modelsToTry) {
     try {

@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { getCategoryBadgeClass, formatTimeRange } from "@/lib/utils";
+import { TripAssistantDrawer } from "@/components/ai/TripAssistantDrawer";
 
 export default async function TripViewPage({
   params,
@@ -547,6 +548,13 @@ export default async function TripViewPage({
           </div>
         )}
       </main>
+
+      {tripData && (
+        <TripAssistantDrawer
+          tripId={tripData.id}
+          tripTitle={tripData.title}
+        />
+      )}
     </div>
   );
 }
