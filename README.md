@@ -215,9 +215,10 @@ GlobeTrotter is developed through a structured, modular plan:
 | **Part 4** | Dashboard, Trip Creation & My Trips Management | ✅ Completed |
 | **Part 5** | City & Activity Catalog Search & Filters | ✅ Completed |
 | **Part 6** | Day-by-Day Itinerary Builder & Drag-and-Drop Sequencing | ✅ Completed |
+| **Part 7** | Itinerary View & Clean Agenda Summary | ✅ Completed |
 | **Part 8** | Interactive Calendar Timeline & Rescheduling | ✅ Completed |
 | **Part 9** | Trip Budget Analytics, Expense Logging & Visual Charts | ✅ Completed |
-| **Part 10** | AI Trip Generator (Natural-Language Itinerary Generation) | ⏳ Planned |
+| **Part 10** | AI Trip Generator (Gemini Structured Generation, Heuristic Fallback, Draft Review & Database Persistence) | ✅ Completed |
 | **Part 11** | AI Itinerary Optimizer & Context-Aware Trip Assistant | ⏳ Planned |
 | **Part 12** | End-to-End Testing, UI Polish & Production Deployment | ⏳ Planned |
 

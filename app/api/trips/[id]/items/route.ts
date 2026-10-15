@@ -34,7 +34,7 @@ export async function POST(
     // Verify trip ownership
     const { data: trip, error: tripError } = await supabase
       .from("trips")
-      .select("id, user_id")
+      .select("id, user_id, currency")
       .eq("id", tripId)
       .single();
 
@@ -46,6 +46,59 @@ export async function POST(
     }
 
     const body = await request.json();
+
+    // Support batch insertion when body.items array is provided
+    if (Array.isArray(body.items)) {
+      if (body.items.length === 0) {
+        return NextResponse.json({ items: [] }, { status: 200 });
+      }
+
+      const insertBatch = body.items.map((item: any, idx: number) => {
+        const dayNum = Number(item.day_number);
+        const validDay = Number.isInteger(dayNum) && dayNum >= 1 ? dayNum : 1;
+        const sanitizedCat = VALID_CATEGORIES.includes(item.category)
+          ? item.category
+          : "Sightseeing";
+        const costNum = Number(item.estimated_cost);
+        const validCost = isNaN(costNum) || costNum < 0 ? 0 : costNum;
+        const orderIdx = Number(item.order_index);
+        const validOrder = isNaN(orderIdx) || orderIdx < 0 ? idx : orderIdx;
+
+        return {
+          trip_id: tripId,
+          title: String(item.title || "Curated Activity").trim(),
+          description: item.description ? String(item.description).trim() : null,
+          category: sanitizedCat,
+          day_number: validDay,
+          order_index: validOrder,
+          estimated_cost: validCost,
+          currency: item.currency || trip.currency || "USD",
+          start_time: item.start_time || null,
+          end_time: item.end_time || null,
+          date: item.date ? String(item.date) : null,
+          notes: item.notes ? String(item.notes).trim() : null,
+          trip_stop_id: item.trip_stop_id || null,
+          activity_id: item.activity_id || null,
+          is_completed: false,
+        };
+      });
+
+      const { data: newItems, error: batchError } = await supabase
+        .from("itinerary_items")
+        .insert(insertBatch)
+        .select("*, activities(*)");
+
+      if (batchError) {
+        console.error("Failed to batch insert itinerary items:", batchError.message);
+        return NextResponse.json(
+          { error: "Failed to batch save itinerary items" },
+          { status: 500 }
+        );
+      }
+
+      return NextResponse.json({ items: newItems || [] }, { status: 201 });
+    }
+
     const {
       title,
       description,

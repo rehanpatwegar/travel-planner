@@ -42,6 +42,7 @@ import { DroppableDayColumn } from "./DroppableDayColumn";
 import { ActivitySearchModal } from "./ActivitySearchModal";
 import { AddStopModal } from "./AddStopModal";
 import { EditItemModal } from "./EditItemModal";
+import { AISmartSuggestModal } from "./AISmartSuggestModal";
 import { getCategoryBadgeClass, formatTimeRange } from "./SortableItineraryItem";
 
 interface TripBuilderWorkspaceProps {
@@ -73,6 +74,7 @@ export function TripBuilderWorkspace({
 
   // Modals state
   const [isActivityModalOpen, setIsActivityModalOpen] = useState(false);
+  const [isAISuggestModalOpen, setIsAISuggestModalOpen] = useState(false);
   const [targetDayForNewActivity, setTargetDayForNewActivity] = useState(1);
   const [isStopModalOpen, setIsStopModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<ItineraryItem | null>(null);
@@ -667,6 +669,15 @@ export function TripBuilderWorkspace({
               </Button>
 
               <Button
+                size="sm"
+                onClick={() => setIsAISuggestModalOpen(true)}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs h-8.5 gap-1.5 shadow-xs font-semibold"
+              >
+                <Sparkles className="h-3.5 w-3.5 text-indigo-200" />
+                ✨ AI Smart Suggest
+              </Button>
+
+              <Button
                 variant="outline"
                 size="sm"
                 onClick={() => setExtraDays((prev) => prev + 1)}
@@ -810,6 +821,19 @@ export function TripBuilderWorkspace({
         dayNumber={targetDayForNewActivity}
         totalDays={totalDays}
         onSelectActivity={handleAddActivity}
+      />
+
+      <AISmartSuggestModal
+        isOpen={isAISuggestModalOpen}
+        onClose={() => setIsAISuggestModalOpen(false)}
+        trip={trip}
+        stops={stops}
+        totalDays={totalDays}
+        totalPlannedCost={totalPlannedCost}
+        onSuccess={(newItems) => {
+          setItems((prev) => [...prev, ...newItems]);
+          setSaveStatus("saved");
+        }}
       />
 
       <AddStopModal

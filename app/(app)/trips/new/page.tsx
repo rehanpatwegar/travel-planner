@@ -14,6 +14,7 @@ import {
   AlertCircle,
   CheckCircle2,
   Sparkles,
+  Sliders,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -21,12 +22,16 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { AITripGeneratorWizard } from "@/components/ai/AITripGeneratorWizard";
 
 export default function NewTripPage() {
   const router = useRouter();
   const supabase = createClient();
 
-  // Form states
+  // Mode: "ai" for Part 10 AI Trip Generator, "manual" for original Part 4 creation
+  const [mode, setMode] = useState<"ai" | "manual">("ai");
+
+  // Form states for manual creation
   const [title, setTitle] = useState("");
   const [destination, setDestination] = useState("");
   const [startDate, setStartDate] = useState("");
@@ -40,7 +45,7 @@ export default function NewTripPage() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successTripId, setSuccessTripId] = useState<string | null>(null);
 
-  async function handleSubmit(e: FormEvent) {
+  async function handleManualSubmit(e: FormEvent) {
     e.preventDefault();
     setErrorMsg(null);
 
@@ -140,7 +145,7 @@ export default function NewTripPage() {
               <span className="font-bold tracking-tight text-slate-900">GlobeTrotter</span>
             </Link>
             <span className="text-slate-300">/</span>
-            <span className="text-sm font-medium text-slate-600">Create New Trip</span>
+            <span className="text-sm font-medium text-slate-600">Plan a Journey</span>
           </div>
 
           <Link href="/dashboard">
@@ -152,193 +157,252 @@ export default function NewTripPage() {
         </div>
       </header>
 
-      {/* Main Form Container */}
+      {/* Main Container */}
       <main className="container mx-auto max-w-4xl px-4 py-8 sm:px-6">
         <div className="mx-auto max-w-2xl">
+          {/* Header Title & Subtitle */}
           <div className="text-center">
-            <Badge variant="outline" className="border-blue-200 bg-blue-50 text-blue-700 text-xs">
-              Trip Setup
+            <Badge variant="outline" className="border-indigo-200 bg-indigo-50 text-indigo-700 text-xs">
+              {mode === "ai" ? "AI Itinerary Planning" : "Manual Trip Setup"}
             </Badge>
             <h1 className="mt-3 text-3xl font-extrabold tracking-tight text-slate-900">
-              Plan a New Journey
+              {mode === "ai" ? "Generate Your Dream Trip" : "Plan a New Journey"}
             </h1>
             <p className="mt-1.5 text-sm text-slate-600">
-              Configure your trip parameters. You can add stops and organize activities in the next step.
+              {mode === "ai"
+                ? "Let Gemini AI draft your personalized multi-city itinerary, daily schedule, and estimated activity budget."
+                : "Configure your trip parameters manually. You can add stops and organize activities in the next step."}
             </p>
           </div>
 
-          {/* Feedback Alerts */}
-          {errorMsg && (
-            <div className="mt-6 flex items-start gap-2.5 rounded-lg border border-rose-200 bg-rose-50 p-3.5 text-xs text-rose-800">
-              <AlertCircle className="h-4 w-4 shrink-0 mt-0.5 text-rose-600" />
-              <p>{errorMsg}</p>
+          {/* Mode Switcher Buttons */}
+          <div className="mt-6 flex items-center justify-center">
+            <div className="inline-flex rounded-lg border border-slate-200 bg-slate-100 p-1 shadow-inner">
+              <button
+                type="button"
+                onClick={() => setMode("ai")}
+                className={`inline-flex items-center gap-1.5 rounded-md px-4 py-2 text-xs font-semibold transition-all ${
+                  mode === "ai"
+                    ? "bg-white text-indigo-700 shadow-sm ring-1 ring-slate-200"
+                    : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                <Sparkles className="h-3.5 w-3.5 text-indigo-600" />
+                AI Trip Generator
+              </button>
+              <button
+                type="button"
+                onClick={() => setMode("manual")}
+                className={`inline-flex items-center gap-1.5 rounded-md px-4 py-2 text-xs font-semibold transition-all ${
+                  mode === "manual"
+                    ? "bg-white text-slate-900 shadow-sm ring-1 ring-slate-200"
+                    : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                <Sliders className="h-3.5 w-3.5 text-slate-500" />
+                Manual Setup
+              </button>
+            </div>
+          </div>
+
+          {/* AI Generator Flow */}
+          {mode === "ai" && (
+            <div className="mt-6">
+              <AITripGeneratorWizard onSwitchToManual={() => setMode("manual")} />
             </div>
           )}
 
-          {successTripId && (
-            <div className="mt-6 flex items-start gap-2.5 rounded-lg border border-emerald-200 bg-emerald-50 p-3.5 text-xs text-emerald-800">
-              <CheckCircle2 className="h-4 w-4 shrink-0 mt-0.5 text-emerald-600" />
-              <p>Trip created successfully! Redirecting to itinerary builder...</p>
-            </div>
-          )}
-
-          {/* Form Card */}
-          <Card className="mt-6 border-slate-200 bg-white shadow-sm">
-            <CardHeader className="pb-4">
-              <CardTitle className="text-base">Trip Details</CardTitle>
-              <CardDescription className="text-xs">
-                Fill in the basic parameters for your upcoming journey.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={handleSubmit} className="space-y-4">
-                {/* Trip Title */}
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-slate-700">
-                    Trip Name <span className="text-rose-500">*</span>
-                  </label>
-                  <Input
-                    placeholder="e.g. Western Europe Explorer, Tokyo Culinary Tour"
-                    required
-                    value={title}
-                    onChange={(e) => setTitle(e.target.value)}
-                    disabled={isSubmitting}
-                    className="h-10 text-sm"
-                  />
+          {/* Manual Trip Setup Flow */}
+          {mode === "manual" && (
+            <div className="mt-6">
+              {/* Feedback Alerts */}
+              {errorMsg && (
+                <div className="mb-5 flex items-start gap-2.5 rounded-lg border border-rose-200 bg-rose-50 p-3.5 text-xs text-rose-800">
+                  <AlertCircle className="h-4 w-4 shrink-0 mt-0.5 text-rose-600" />
+                  <p>{errorMsg}</p>
                 </div>
+              )}
 
-                {/* Initial Destination / City */}
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-slate-700">
-                    Primary Destination or Initial City
-                  </label>
-                  <div className="relative">
-                    <MapPin className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                    <Input
-                      placeholder="e.g. Paris, France or Lucerne, Switzerland"
-                      value={destination}
-                      onChange={(e) => setDestination(e.target.value)}
-                      disabled={isSubmitting}
-                      className="pl-9 h-10 text-sm"
-                    />
-                  </div>
-                  <p className="text-[11px] text-slate-400">
-                    Additional multi-city stops can be added in the itinerary builder.
-                  </p>
+              {successTripId && (
+                <div className="mb-5 flex items-start gap-2.5 rounded-lg border border-emerald-200 bg-emerald-50 p-3.5 text-xs text-emerald-800">
+                  <CheckCircle2 className="h-4 w-4 shrink-0 mt-0.5 text-emerald-600" />
+                  <p>Trip created successfully! Redirecting to itinerary builder...</p>
                 </div>
+              )}
 
-                {/* Travel Dates */}
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-slate-700">Start Date</label>
-                    <div className="relative">
-                      <Input
-                        type="date"
-                        value={startDate}
-                        onChange={(e) => setStartDate(e.target.value)}
-                        disabled={isSubmitting}
-                        className="h-10 text-sm"
-                      />
+              {/* Form Card */}
+              <Card className="border-slate-200 bg-white shadow-sm">
+                <CardHeader className="pb-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle className="text-base">Trip Details</CardTitle>
+                      <CardDescription className="text-xs">
+                        Fill in the basic parameters for your upcoming journey.
+                      </CardDescription>
                     </div>
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-slate-700">End Date</label>
-                    <div className="relative">
-                      <Input
-                        type="date"
-                        value={endDate}
-                        onChange={(e) => setEndDate(e.target.value)}
-                        disabled={isSubmitting}
-                        className="h-10 text-sm"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Budget and Currency */}
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                  <div className="space-y-1.5 sm:col-span-2">
-                    <label className="text-xs font-semibold text-slate-700">
-                      Estimated Total Budget
-                    </label>
-                    <div className="relative">
-                      <DollarSign className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                      <Input
-                        type="number"
-                        min="0"
-                        step="10"
-                        placeholder="2500"
-                        value={totalBudget}
-                        onChange={(e) => setTotalBudget(e.target.value)}
-                        disabled={isSubmitting}
-                        className="pl-9 h-10 text-sm"
-                      />
-                    </div>
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-slate-700">Currency</label>
-                    <Input
-                      maxLength={3}
-                      value={currency}
-                      onChange={(e) => setCurrency(e.target.value.toUpperCase())}
-                      disabled={isSubmitting}
-                      className="h-10 text-sm uppercase"
-                    />
-                  </div>
-                </div>
-
-                {/* Description & Travel Interests */}
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-slate-700">
-                    Travel Interests & Notes
-                  </label>
-                  <Textarea
-                    placeholder="e.g. Focus on historic architecture, scenic rail journeys, local dining, and museum tours..."
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                    disabled={isSubmitting}
-                    rows={3}
-                    className="text-sm resize-none"
-                  />
-                  <p className="text-[11px] text-slate-400">
-                    Stored in the trip description to contextualize your planning notes.
-                  </p>
-                </div>
-
-                {/* Form Action Buttons */}
-                <div className="pt-4 border-t border-slate-100 flex items-center justify-end gap-3">
-                  <Link href="/dashboard">
                     <Button
                       type="button"
-                      variant="outline"
+                      variant="ghost"
                       size="sm"
-                      disabled={isSubmitting}
-                      className="text-xs"
+                      onClick={() => setMode("ai")}
+                      className="text-xs text-indigo-600 hover:bg-indigo-50"
                     >
-                      Cancel
+                      <Sparkles className="mr-1 h-3.5 w-3.5" />
+                      Switch to AI Generator
                     </Button>
-                  </Link>
-                  <Button
-                    type="submit"
-                    disabled={isSubmitting}
-                    className="bg-blue-600 hover:bg-blue-700 text-white text-xs h-9 font-medium"
-                  >
-                    {isSubmitting ? (
-                      <>
-                        <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                        Saving Trip...
-                      </>
-                    ) : (
-                      <>
-                        <Plus className="mr-1.5 h-3.5 w-3.5" />
-                        Create Trip
-                      </>
-                    )}
-                  </Button>
-                </div>
-              </form>
-            </CardContent>
-          </Card>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <form onSubmit={handleManualSubmit} className="space-y-4">
+                    {/* Trip Title */}
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold text-slate-700">
+                        Trip Name <span className="text-rose-500">*</span>
+                      </label>
+                      <Input
+                        placeholder="e.g. Western Europe Explorer, Tokyo Culinary Tour"
+                        required
+                        value={title}
+                        onChange={(e) => setTitle(e.target.value)}
+                        disabled={isSubmitting}
+                        className="h-10 text-sm"
+                      />
+                    </div>
+
+                    {/* Initial Destination / City */}
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold text-slate-700">
+                        Primary Destination or Initial City
+                      </label>
+                      <div className="relative">
+                        <MapPin className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                        <Input
+                          placeholder="e.g. Paris, France or Lucerne, Switzerland"
+                          value={destination}
+                          onChange={(e) => setDestination(e.target.value)}
+                          disabled={isSubmitting}
+                          className="pl-9 h-10 text-sm"
+                        />
+                      </div>
+                      <p className="text-[11px] text-slate-400">
+                        Additional multi-city stops can be added in the itinerary builder.
+                      </p>
+                    </div>
+
+                    {/* Travel Dates */}
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-semibold text-slate-700">Start Date</label>
+                        <div className="relative">
+                          <Input
+                            type="date"
+                            value={startDate}
+                            onChange={(e) => setStartDate(e.target.value)}
+                            disabled={isSubmitting}
+                            className="h-10 text-sm"
+                          />
+                        </div>
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-semibold text-slate-700">End Date</label>
+                        <div className="relative">
+                          <Input
+                            type="date"
+                            value={endDate}
+                            onChange={(e) => setEndDate(e.target.value)}
+                            disabled={isSubmitting}
+                            className="h-10 text-sm"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Budget and Currency */}
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                      <div className="space-y-1.5 sm:col-span-2">
+                        <label className="text-xs font-semibold text-slate-700">
+                          Estimated Total Budget
+                        </label>
+                        <div className="relative">
+                          <DollarSign className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                          <Input
+                            type="number"
+                            min="0"
+                            step="10"
+                            placeholder="2500"
+                            value={totalBudget}
+                            onChange={(e) => setTotalBudget(e.target.value)}
+                            disabled={isSubmitting}
+                            className="pl-9 h-10 text-sm"
+                          />
+                        </div>
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-semibold text-slate-700">Currency</label>
+                        <Input
+                          maxLength={3}
+                          value={currency}
+                          onChange={(e) => setCurrency(e.target.value.toUpperCase())}
+                          disabled={isSubmitting}
+                          className="h-10 text-sm uppercase"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Description & Travel Interests */}
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold text-slate-700">
+                        Travel Interests & Notes
+                      </label>
+                      <Textarea
+                        placeholder="e.g. Focus on historic architecture, scenic rail journeys, local dining, and museum tours..."
+                        value={description}
+                        onChange={(e) => setDescription(e.target.value)}
+                        disabled={isSubmitting}
+                        rows={3}
+                        className="text-sm resize-none"
+                      />
+                      <p className="text-[11px] text-slate-400">
+                        Stored in the trip description to contextualize your planning notes.
+                      </p>
+                    </div>
+
+                    {/* Form Action Buttons */}
+                    <div className="pt-4 border-t border-slate-100 flex items-center justify-end gap-3">
+                      <Link href="/dashboard">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          disabled={isSubmitting}
+                          className="text-xs"
+                        >
+                          Cancel
+                        </Button>
+                      </Link>
+                      <Button
+                        type="submit"
+                        disabled={isSubmitting}
+                        className="bg-blue-600 hover:bg-blue-700 text-white text-xs h-9 font-medium"
+                      >
+                        {isSubmitting ? (
+                          <>
+                            <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                            Saving Trip...
+                          </>
+                        ) : (
+                          <>
+                            <Plus className="mr-1.5 h-3.5 w-3.5" />
+                            Create Trip
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </form>
+                </CardContent>
+              </Card>
+            </div>
+          )}
         </div>
       </main>
     </div>
