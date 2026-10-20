@@ -193,25 +193,32 @@ If no new activity is being suggested or the user is just asking a general quest
     });
   });
 
-  const modelsToTry = [
-    "gemini-3.8-flash",
-    "gemini-3.7-flash",
-    "gemini-3.5-flash",
-    "gemini-flash-latest",
-  ];
+  const primaryModel = process.env.GEMINI_MODEL || "gemini-3.5-flash";
+  const modelsToTry = [primaryModel, "gemini-3-flash-preview"].filter(
+    (m, idx, arr) => arr.indexOf(m) === idx
+  );
 
   let lastError = "";
+  const deadline = Date.now() + 15000; // 15s max cumulative timeout
 
   for (const model of modelsToTry) {
+    const remainingBudget = deadline - Date.now();
+    if (remainingBudget <= 1000) break;
+
+    const attemptTimeout = Math.min(9000, remainingBudget);
+
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 25000);
+      const timeoutId = setTimeout(() => controller.abort(), attemptTimeout);
 
-      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
 
       const res = await fetch(endpoint, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "x-goog-api-key": apiKey,
+        },
         signal: controller.signal,
         body: JSON.stringify({
           contents,

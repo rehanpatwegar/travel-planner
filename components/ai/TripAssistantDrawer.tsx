@@ -70,6 +70,12 @@ export function TripAssistantDrawer({
     const text = (textToSend || input).trim();
     if (!text || isLoading) return;
 
+    // Validate user question against limit without silently truncating
+    if (text.length > 1000) {
+      setErrorMsg("Question exceeds maximum allowed limit of 1,000 characters. Please shorten your question.");
+      return;
+    }
+
     setErrorMsg(null);
     setInput("");
 
@@ -80,16 +86,35 @@ export function TripAssistantDrawer({
     setMessages(updatedMessages);
     setIsLoading(true);
 
+    // Prepare bounded conversation history for the backend request:
+    // 1. Maintain a bounded window (recent 8 messages) to keep request size small.
+    // 2. Truncate older assistant/user content so each fits safely within the 2,000-char server limit.
+    // 3. Append current user question intact (already verified <= 1,000 chars; never silently truncated).
+    const boundedPayloadMessages = [
+      ...messages.slice(-8).map((m) => {
+        let content = m.content.trim();
+        const maxLen = m.role === "assistant" ? 1500 : 1000;
+        if (content.length > maxLen) {
+          content = content.slice(0, maxLen) + "... [truncated for context]";
+        }
+        return {
+          role: m.role,
+          content,
+        };
+      }),
+      {
+        role: "user" as const,
+        content: text,
+      },
+    ];
+
     try {
       const res = await fetch("/api/ai/assistant", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           tripId,
-          messages: updatedMessages.map((m) => ({
-            role: m.role,
-            content: m.content,
-          })),
+          messages: boundedPayloadMessages,
         }),
       });
 
