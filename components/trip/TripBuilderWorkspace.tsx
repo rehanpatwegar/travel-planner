@@ -65,7 +65,24 @@ export function TripBuilderWorkspace({
 
   useEffect(() => {
     setIsMounted(true);
-  }, []);
+
+    function handleExternalActivityAdded(e: Event) {
+      const customEvent = e as CustomEvent;
+      if (customEvent.detail?.tripId === trip.id && customEvent.detail?.item) {
+        const newItem = customEvent.detail.item;
+        setItems((prev) => {
+          if (prev.some((i) => i.id === newItem.id)) return prev;
+          return [...prev, newItem];
+        });
+        setSaveStatus("saved");
+      }
+    }
+
+    window.addEventListener("trip:activity-added", handleExternalActivityAdded);
+    return () => {
+      window.removeEventListener("trip:activity-added", handleExternalActivityAdded);
+    };
+  }, [trip.id]);
 
   // Drag and drop state
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -863,6 +880,13 @@ export function TripBuilderWorkspace({
       <TripAssistantDrawer
         tripId={trip.id}
         tripTitle={trip.title}
+        onActivityAdded={(newItem) => {
+          setItems((prev) => {
+            if (prev.some((i) => i.id === newItem.id)) return prev;
+            return [...prev, newItem];
+          });
+          setSaveStatus("saved");
+        }}
       />
 
       <AddStopModal

@@ -388,6 +388,35 @@ ${JSON.stringify(itemsPayload, null, 2)}
         });
       }
 
+      // Normalize suggestedOrder per day so proposals never have duplicate order_index values
+      const changesByDay = new Map<number, ProposedItemChange[]>();
+      for (const ch of sanitizedChanges) {
+        const d = ch.suggestedDay;
+        if (!changesByDay.has(d)) changesByDay.set(d, []);
+        changesByDay.get(d)!.push(ch);
+      }
+
+      for (const [, dayChanges] of changesByDay) {
+        dayChanges.sort((a, b) => {
+          if (a.suggestedOrder !== b.suggestedOrder) {
+            return a.suggestedOrder - b.suggestedOrder;
+          }
+          const timeA = a.suggestedStartTime || "99:99";
+          const timeB = b.suggestedStartTime || "99:99";
+          return timeA.localeCompare(timeB);
+        });
+
+        let currentSeq = 0;
+        dayChanges.forEach((ch) => {
+          if (ch.suggestedOrder < currentSeq) {
+            ch.suggestedOrder = currentSeq;
+          } else {
+            currentSeq = ch.suggestedOrder;
+          }
+          currentSeq++;
+        });
+      }
+
       return {
         analysis: {
           pacingSummary: String(parsed.analysis.pacingSummary || "Itinerary reviewed.").trim(),

@@ -35,3 +35,57 @@ export function getCategoryBadgeClass(category: string): string {
   }
 }
 
+/**
+ * Computes a standardized ISO date (YYYY-MM-DD) for a given itinerary day number,
+ * keeping day schedules, calendar events, and trip start date in sync.
+ */
+export function computeDateForDay(
+  startDateStr: string | null | undefined,
+  dayNumber: number
+): string | null {
+  if (!startDateStr || !dayNumber || dayNumber < 1) return null;
+  const parts = startDateStr.split("-").map(Number);
+  if (parts.length < 3 || isNaN(parts[0]) || isNaN(parts[1]) || isNaN(parts[2])) {
+    return null;
+  }
+  const [year, month, day] = parts;
+  const dateObj = new Date(Date.UTC(year, month - 1, day));
+  dateObj.setUTCDate(dateObj.getUTCDate() + (dayNumber - 1));
+  return dateObj.toISOString().split("T")[0];
+}
+
+/**
+ * Finds the correct trip_stop_id for an activity scheduled on a specific day number,
+ * evaluating date spans first and falling back to city stop sequencing.
+ */
+export function getStopIdForDay(
+  stops: Array<{
+    id: string;
+    arrival_date?: string | null;
+    departure_date?: string | null;
+    order_index?: number;
+  }>,
+  tripStartDate: string | null | undefined,
+  dayNumber: number
+): string | null {
+  if (!stops || stops.length === 0) return null;
+  if (stops.length === 1) return stops[0].id;
+
+  // 1. Date-based matching if trip start date and stop dates exist
+  if (tripStartDate && dayNumber >= 1) {
+    const dayDate = computeDateForDay(tripStartDate, dayNumber);
+    if (dayDate) {
+      const dateMatched = stops.find((s) => {
+        if (!s.arrival_date || !s.departure_date) return false;
+        return s.arrival_date <= dayDate && dayDate <= s.departure_date;
+      });
+      if (dateMatched) return dateMatched.id;
+    }
+  }
+
+  // 2. Sequence-based matching: map day index to stops sequence
+  const sortedStops = [...stops].sort((a, b) => (a.order_index ?? 0) - (b.order_index ?? 0));
+  const stopIndex = Math.min(Math.max(0, dayNumber - 1), sortedStops.length - 1);
+  return sortedStops[stopIndex]?.id || null;
+}
+

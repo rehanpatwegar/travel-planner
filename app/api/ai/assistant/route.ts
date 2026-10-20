@@ -193,7 +193,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 7. Build system prompt & chat turns
-    const systemPrompt = `You are GlobeTrotter Copilot, an expert AI travel assistant. Answer any travel-related or itinerary question naturally, concisely, and accurately based on the current trip context provided. If suggesting an activity, provide its title, approximate cost, and time slot.
+    const systemPrompt = `You are GlobeTrotter Copilot, an expert AI travel assistant. Answer any travel-related or itinerary question naturally, concisely, and accurately based on the current trip context provided.
 
 === CURRENT TRIP CONTEXT ===
 Destination: ${destination}
@@ -205,8 +205,19 @@ ${activitiesSummary}
 
 === INSTRUCTIONS ===
 - Answer the user's question directly, naturally, and helpfully in markdown.
-- For practical travel questions (such as packing advice, weather, high-altitude advice for Leh Ladakh in October/November, acclimatization, local food, or cultural etiquette), give comprehensive and realistic advice.
-- If recommending a specific activity, specify its approximate cost, time slot, and best day.
+- For practical travel questions (such as packing advice, weather, high-altitude advice, acclimatization, local food, or cultural etiquette), give comprehensive and realistic advice.
+- When recommending a specific activity that the user can add to their itinerary, provide its structured details so GlobeTrotter can present an actionable card. Format either as top-level JSON:
+  {
+    "replyText": "Markdown response text...",
+    "suggestedActivity": {
+      "title": "Activity Name",
+      "cost": 0,
+      "time_slot": "HH:MM-HH:MM",
+      "day_index": 1
+    }
+  }
+  or include a \`\`\`json block with the suggestedActivity object.
+- If no specific activity is recommended for addition, reply naturally in markdown without a suggestedActivity.
 - Do NOT return dummy, canned, or placeholder responses.
 `;
 
@@ -359,15 +370,88 @@ ${activitiesSummary}
     }
 
     let cleanReplyText = responseText;
-    let suggestedActivity: any = null;
+    let suggestedActivity: {
+      title: string;
+      cost: number;
+      time_slot?: string;
+      day_index?: number;
+    } | null = null;
 
-    if (responseText.trim().startsWith("{") && responseText.includes("replyText")) {
+    // Helper to sanitize and validate raw suggested activity structures
+    function sanitizeSuggestedActivity(raw: any) {
+      if (!raw || typeof raw !== "object") return null;
+      const title = typeof raw.title === "string" ? raw.title.trim() : "";
+      if (!title) return null;
+
+      let cost = 0;
+      if (typeof raw.cost === "number" && !isNaN(raw.cost)) {
+        cost = Math.max(0, raw.cost);
+      } else if (typeof raw.cost === "string") {
+        const parsed = parseFloat(raw.cost.replace(/[^0-9.]/g, ""));
+        cost = isNaN(parsed) ? 0 : Math.max(0, parsed);
+      }
+
+      let time_slot: string | undefined = undefined;
+      if (typeof raw.time_slot === "string" && raw.time_slot.trim()) {
+        time_slot = raw.time_slot.trim();
+      }
+
+      let day_index: number | undefined = undefined;
+      const dayNum = Number(raw.day_index);
+      if (Number.isInteger(dayNum) && dayNum >= 1) {
+        day_index = dayNum;
+      }
+
+      return {
+        title,
+        cost,
+        ...(time_slot ? { time_slot } : {}),
+        ...(day_index ? { day_index } : {}),
+      };
+    }
+
+    // 1. Try parsing full response as JSON (with or without code fences)
+    let candidateJson = responseText.trim();
+    if (candidateJson.startsWith("```json")) {
+      candidateJson = candidateJson.replace(/^```json\s*/i, "").replace(/\s*```$/i, "").trim();
+    } else if (candidateJson.startsWith("```")) {
+      candidateJson = candidateJson.replace(/^```\s*/i, "").replace(/\s*```$/i, "").trim();
+    }
+
+    if (candidateJson.startsWith("{") && candidateJson.endsWith("}")) {
       try {
-        const parsed = JSON.parse(responseText);
-        cleanReplyText = parsed.replyText || responseText;
-        suggestedActivity = parsed.suggestedActivity || null;
+        const parsed = JSON.parse(candidateJson);
+        if (typeof parsed.replyText === "string" && parsed.replyText.trim()) {
+          cleanReplyText = parsed.replyText.trim();
+        }
+        if (parsed.suggestedActivity) {
+          suggestedActivity = sanitizeSuggestedActivity(parsed.suggestedActivity);
+        } else if (parsed.title && !parsed.replyText) {
+          suggestedActivity = sanitizeSuggestedActivity(parsed);
+          cleanReplyText = `Here is a suggested activity: **${suggestedActivity?.title}**.`;
+        }
       } catch {
-        // use responseText as is
+        // Fall back to scanning for embedded blocks
+      }
+    }
+
+    // 2. Scan for embedded JSON blocks if not yet extracted
+    if (!suggestedActivity) {
+      const jsonBlockRegex = /```(?:json)?\s*(\{[\s\S]*?\})\s*```/i;
+      const match = responseText.match(jsonBlockRegex);
+      if (match && match[1]) {
+        try {
+          const parsed = JSON.parse(match[1]);
+          if (parsed.suggestedActivity) {
+            suggestedActivity = sanitizeSuggestedActivity(parsed.suggestedActivity);
+            cleanReplyText = responseText.replace(match[0], "").trim();
+          } else if (parsed.title) {
+            suggestedActivity = sanitizeSuggestedActivity(parsed);
+            cleanReplyText = responseText.replace(match[0], "").trim();
+          }
+        } catch {
+          // Gracefully ignore malformed embedded block
+        }
       }
     }
 

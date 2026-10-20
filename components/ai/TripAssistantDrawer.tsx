@@ -33,6 +33,7 @@ interface ChatMessage {
 interface TripAssistantDrawerProps {
   tripId: string;
   tripTitle: string;
+  onActivityAdded?: (item: any) => void;
 }
 
 const QUICK_PROMPTS = [
@@ -45,6 +46,7 @@ const QUICK_PROMPTS = [
 export function TripAssistantDrawer({
   tripId,
   tripTitle,
+  onActivityAdded,
 }: TripAssistantDrawerProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([
@@ -152,10 +154,15 @@ export function TripAssistantDrawer({
       let startTime: string | null = null;
       let endTime: string | null = null;
 
-      if (act.time_slot && act.time_slot.includes("-")) {
-        const parts = act.time_slot.split("-");
-        startTime = parts[0]?.trim() || null;
-        endTime = parts[1]?.trim() || null;
+      if (act.time_slot) {
+        const slot = act.time_slot.trim();
+        if (slot.includes("-")) {
+          const parts = slot.split("-");
+          startTime = parts[0]?.trim() || null;
+          endTime = parts[1]?.trim() || null;
+        } else {
+          startTime = slot;
+        }
       }
 
       const res = await fetch(`/api/trips/${tripId}/items`, {
@@ -165,7 +172,7 @@ export function TripAssistantDrawer({
           title: act.title,
           category: "Sightseeing",
           day_number: act.day_index || 1,
-          estimated_cost: act.cost || 0,
+          estimated_cost: Number(act.cost) || 0,
           start_time: startTime,
           end_time: endTime,
           notes: "Added via AI Copilot recommendation",
@@ -177,9 +184,24 @@ export function TripAssistantDrawer({
         throw new Error(err.error || "Failed to add activity to itinerary");
       }
 
+      const data = await res.json().catch(() => ({}));
+      const createdItem = data.item;
+
       setMessages((prev) =>
         prev.map((m, i) => (i === msgIdx ? { ...m, added: true } : m))
       );
+
+      // Instantly synchronize with builder without page refresh
+      if (createdItem) {
+        onActivityAdded?.(createdItem);
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(
+            new CustomEvent("trip:activity-added", {
+              detail: { tripId, item: createdItem },
+            })
+          );
+        }
+      }
     } catch (err: unknown) {
       setErrorMsg(err instanceof Error ? err.message : "Error saving activity");
     } finally {
@@ -279,7 +301,7 @@ export function TripAssistantDrawer({
                   </div>
 
                   {/* Actionable Structured Recommendation */}
-                  {m.suggestedActivity && (
+                  {m.suggestedActivity && m.suggestedActivity.title && (
                     <div className="rounded-xl border border-indigo-200 bg-indigo-50/80 p-3 shadow-xs space-y-2">
                       <div className="flex items-start justify-between gap-2">
                         <div>
@@ -291,7 +313,9 @@ export function TripAssistantDrawer({
                           </span>
                         </div>
                         <Badge variant="outline" className="text-[10px] bg-white text-slate-700 shrink-0">
-                          {m.suggestedActivity.cost > 0 ? `$${m.suggestedActivity.cost}` : "Free"}
+                          {Number(m.suggestedActivity.cost) > 0
+                            ? `$${Number(m.suggestedActivity.cost).toFixed(0)}`
+                            : "Free"}
                         </Badge>
                       </div>
 

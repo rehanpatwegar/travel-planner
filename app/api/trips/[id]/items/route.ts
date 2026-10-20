@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { computeDateForDay, getStopIdForDay } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -34,7 +35,7 @@ export async function POST(
     // Verify trip ownership
     const { data: trip, error: tripError } = await supabase
       .from("trips")
-      .select("id, user_id, currency")
+      .select("id, user_id, currency, start_date")
       .eq("id", tripId)
       .single();
 
@@ -44,6 +45,13 @@ export async function POST(
         { status: 403 }
       );
     }
+
+    // Fetch verified stops for this trip
+    const { data: stops } = await supabase
+      .from("trip_stops")
+      .select("id, arrival_date, departure_date, order_index")
+      .eq("trip_id", tripId)
+      .order("order_index", { ascending: true });
 
     const body = await request.json();
 
@@ -64,6 +72,14 @@ export async function POST(
         const orderIdx = Number(item.order_index);
         const validOrder = isNaN(orderIdx) || orderIdx < 0 ? idx : orderIdx;
 
+        const validStopId = item.trip_stop_id && stops?.some((s) => s.id === item.trip_stop_id)
+          ? item.trip_stop_id
+          : getStopIdForDay(stops || [], trip.start_date, validDay);
+
+        const calculatedDate = item.date
+          ? String(item.date)
+          : computeDateForDay(trip.start_date, validDay);
+
         return {
           trip_id: tripId,
           title: String(item.title || "Curated Activity").trim(),
@@ -75,9 +91,9 @@ export async function POST(
           currency: item.currency || trip.currency || "USD",
           start_time: item.start_time || null,
           end_time: item.end_time || null,
-          date: item.date ? String(item.date) : null,
+          date: calculatedDate,
           notes: item.notes ? String(item.notes).trim() : null,
-          trip_stop_id: item.trip_stop_id || null,
+          trip_stop_id: validStopId,
           activity_id: item.activity_id || null,
           is_completed: false,
         };
@@ -139,6 +155,14 @@ export async function POST(
     const orderIdx = Number(order_index);
     const sanitizedOrder = isNaN(orderIdx) || orderIdx < 0 ? 0 : orderIdx;
 
+    const validStopId = trip_stop_id && stops?.some((s) => s.id === trip_stop_id)
+      ? trip_stop_id
+      : getStopIdForDay(stops || [], trip.start_date, dayNum);
+
+    const calculatedDate = body.date
+      ? String(body.date)
+      : computeDateForDay(trip.start_date, dayNum);
+
     const insertData: Record<string, any> = {
       trip_id: tripId,
       title: title.trim(),
@@ -147,12 +171,12 @@ export async function POST(
       day_number: dayNum,
       order_index: sanitizedOrder,
       estimated_cost: sanitizedCost,
-      currency: currency || "USD",
+      currency: currency || trip.currency || "USD",
       start_time: start_time || null,
       end_time: end_time || null,
-      date: body.date ? String(body.date) : null,
+      date: calculatedDate,
       notes: notes ? String(notes).trim() : null,
-      trip_stop_id: trip_stop_id || null,
+      trip_stop_id: validStopId,
       activity_id: activity_id || null,
       is_completed: false,
     };
@@ -201,10 +225,10 @@ export async function PUT(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Verify trip ownership
+    // Verify trip ownership and fetch date configuration
     const { data: trip, error: tripError } = await supabase
       .from("trips")
-      .select("id, user_id")
+      .select("id, user_id, start_date")
       .eq("id", tripId)
       .single();
 
@@ -214,6 +238,13 @@ export async function PUT(
         { status: 403 }
       );
     }
+
+    // Fetch verified stops for this trip
+    const { data: stops } = await supabase
+      .from("trip_stops")
+      .select("id, arrival_date, departure_date, order_index")
+      .eq("trip_id", tripId)
+      .order("order_index", { ascending: true });
 
     const body = await request.json();
     const { items } = body;
@@ -238,12 +269,24 @@ export async function PUT(
         return;
       }
 
+      const updateData: Record<string, any> = {
+        day_number: dayNum,
+        order_index: orderIdx,
+      };
+
+      const calculatedDate = computeDateForDay(trip.start_date, dayNum);
+      if (calculatedDate) {
+        updateData.date = calculatedDate;
+      }
+
+      const validStopId = getStopIdForDay(stops || [], trip.start_date, dayNum);
+      if (validStopId) {
+        updateData.trip_stop_id = validStopId;
+      }
+
       return supabase
         .from("itinerary_items")
-        .update({
-          day_number: dayNum,
-          order_index: orderIdx,
-        })
+        .update(updateData)
         .eq("id", item.id)
         .eq("trip_id", tripId);
     });

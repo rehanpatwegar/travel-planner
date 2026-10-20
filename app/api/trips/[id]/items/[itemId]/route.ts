@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { computeDateForDay, getStopIdForDay } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -34,7 +35,7 @@ export async function PATCH(
     // Verify trip ownership
     const { data: trip, error: tripError } = await supabase
       .from("trips")
-      .select("id, user_id")
+      .select("id, user_id, start_date")
       .eq("id", tripId)
       .single();
 
@@ -44,6 +45,13 @@ export async function PATCH(
         { status: 403 }
       );
     }
+
+    // Fetch verified stops for this trip
+    const { data: stops } = await supabase
+      .from("trip_stops")
+      .select("id, arrival_date, departure_date, order_index")
+      .eq("trip_id", tripId)
+      .order("order_index", { ascending: true });
 
     const body = await request.json();
     const updatePayload: Record<string, any> = {};
@@ -116,6 +124,23 @@ export async function PATCH(
       const day = Number(body.day_number);
       if (Number.isInteger(day) && day >= 1) {
         updatePayload.day_number = day;
+        if (body.date === undefined && trip.start_date) {
+          updatePayload.date = computeDateForDay(trip.start_date, day);
+        }
+        if (body.trip_stop_id === undefined) {
+          const matchedStopId = getStopIdForDay(stops || [], trip.start_date, day);
+          if (matchedStopId) {
+            updatePayload.trip_stop_id = matchedStopId;
+          }
+        }
+      }
+    }
+
+    if (body.trip_stop_id !== undefined) {
+      if (body.trip_stop_id === null || body.trip_stop_id === "") {
+        updatePayload.trip_stop_id = null;
+      } else if (stops?.some((s) => s.id === body.trip_stop_id)) {
+        updatePayload.trip_stop_id = body.trip_stop_id;
       }
     }
 
@@ -183,7 +208,7 @@ export async function DELETE(
     // Verify trip ownership
     const { data: trip, error: tripError } = await supabase
       .from("trips")
-      .select("id, user_id")
+      .select("id, user_id, start_date")
       .eq("id", tripId)
       .single();
 
@@ -193,6 +218,13 @@ export async function DELETE(
         { status: 403 }
       );
     }
+
+    // Fetch verified stops for this trip
+    const { data: stops } = await supabase
+      .from("trip_stops")
+      .select("id, arrival_date, departure_date, order_index")
+      .eq("trip_id", tripId)
+      .order("order_index", { ascending: true });
 
     const { error: deleteError } = await supabase
       .from("itinerary_items")

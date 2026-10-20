@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { optimizeItineraryWithGemini } from "@/lib/ai/optimizer";
+import { checkRateLimit } from "@/lib/security/rateLimit";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +19,22 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: "Unauthorized. Please sign in to optimize itineraries." },
         { status: 401 }
+      );
+    }
+
+    // Rate limiting: 10 optimization requests per minute per user
+    const rateLimit = checkRateLimit(`optimize:${user.id}`, 10, 60 * 1000);
+    if (!rateLimit.success) {
+      return NextResponse.json(
+        { error: "Rate limit exceeded. Please wait a moment before analyzing again." },
+        {
+          status: 429,
+          headers: {
+            "Retry-After": String(rateLimit.resetSeconds),
+            "X-RateLimit-Limit": String(rateLimit.limit),
+            "X-RateLimit-Remaining": String(rateLimit.remaining),
+          },
+        }
       );
     }
 
