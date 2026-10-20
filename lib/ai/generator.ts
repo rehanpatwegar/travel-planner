@@ -89,6 +89,996 @@ export function addDaysToDate(baseDate: string, daysOffset: number): string {
   }
 }
 
+interface ActivityTemplate {
+  title: string;
+  desc: string;
+  cost: number;
+  mins: number;
+  category?: string;
+}
+
+/**
+ * Destination-aware heuristic activity pool.
+ * Selects geographically and culturally relevant activities without assuming European or Alpine archetypes,
+ * and ensures all costs are marked as indicative planning estimates rather than verified live prices.
+ */
+function getDestinationTemplates(
+  destination: string,
+  currentCity: string
+): {
+  templates: Record<string, ActivityTemplate[]>;
+  defaultTemplates: ActivityTemplate[];
+} {
+  const place = `${destination} ${currentCity}`.toLowerCase();
+
+  // 1. High-Altitude / Mountain regions
+  if (
+    /ladakh|leh|himalay|alps|interlaken|zermatt|matterhorn|aspen|banff|rockies|cusco|la paz|everest|manali|shimla|kashmir/i.test(
+      place
+    )
+  ) {
+    return {
+      templates: {
+        "Culture & History": [
+          {
+            title: "Ancient Hilltop Monastery & Fortress Exploration",
+            desc: "Explore sacred mountain architecture, centuries-old shrines, and panoramic valley viewpoints.",
+            cost: 10,
+            mins: 120,
+          },
+          {
+            title: "Mountain Heritage Village & Folk Culture Walk",
+            desc: "Discover traditional stone and timber architecture, local craftsmanship, and cultural heritage.",
+            cost: 0,
+            mins: 120,
+          },
+          {
+            title: "High-Altitude Cultural Center & Artifact Museum",
+            desc: "Learn about regional high-mountain traditions, folklore, and preservation history.",
+            cost: 15,
+            mins: 90,
+          },
+        ],
+        "Food & Dining": [
+          {
+            title: "Traditional Mountain Café & Herbal Tea Tasting",
+            desc: "Savor local teas, freshly prepared breads, and warm mountain specialties.",
+            cost: 15,
+            mins: 60,
+          },
+          {
+            title: "Hearty Regional Mountain Dinner",
+            desc: "Enjoy wholesome regional comfort dishes crafted from local grains, broths, and fresh seasonal ingredients.",
+            cost: 30,
+            mins: 90,
+          },
+          {
+            title: "Scenic Valley View Bakery & Refreshment Stop",
+            desc: "Relax with freshly baked goods and hot drinks overlooking snowy peaks and rugged valleys.",
+            cost: 12,
+            mins: 60,
+          },
+        ],
+        "Sightseeing": [
+          {
+            title: "Panoramic Mountain Pass & Scenic Valley Viewpoint",
+            desc: "Marvel at dramatic vistas, winding mountain passes, and sweeping valley landscapes.",
+            cost: 0,
+            mins: 90,
+          },
+          {
+            title: "Historic Old Town & Market Bazaar Walk",
+            desc: "Wander through colorful mountain bazaars, handicraft stalls, and winding cobblestone alleys.",
+            cost: 0,
+            mins: 90,
+          },
+          {
+            title: "Golden Hour Sunset Over Mountain Peaks",
+            desc: "Capture breathtaking alpine/mountain glow across surrounding ridges and canyons.",
+            cost: 0,
+            mins: 75,
+          },
+        ],
+        "Nature": [
+          {
+            title: "Glacial Stream & Alpine Meadow Walk",
+            desc: "Take a refreshing walk along crystal-clear mountain streams and vibrant valley flora.",
+            cost: 0,
+            mins: 120,
+          },
+          {
+            title: "Scenic Valley Nature & Wildlife Trail",
+            desc: "Spot indigenous high-altitude wildlife and scenic rock formations along marked paths.",
+            cost: 0,
+            mins: 150,
+          },
+        ],
+        "Adventure": [
+          {
+            title: "Guided Valley Hiking Trail & Ridge Excursion",
+            desc: "Trek along scenic ridge paths with an experienced local guide and stunning vistas.",
+            cost: 35,
+            mins: 180,
+          },
+          {
+            title: "Mountain Scenic Drive & Photography Safari",
+            desc: "Journey across iconic panoramic roads and hidden viewpoint overlooks.",
+            cost: 40,
+            mins: 180,
+          },
+        ],
+        "Shopping": [
+          {
+            title: "Mountain Artisan Bazaar & Woolen Handicrafts",
+            desc: "Browse authentic handwoven shawls, local woodwork, and artisanal mountain crafts.",
+            cost: 0,
+            mins: 90,
+          },
+        ],
+        "Relaxation": [
+          {
+            title: "Natural Hot Springs or Mountain Wellness Spa",
+            desc: "Unwind in restorative mineral waters and tranquil alpine wellness pavilions.",
+            cost: 30,
+            mins: 120,
+          },
+        ],
+      },
+      defaultTemplates: [
+        {
+          title: "Mountain Pass Panoramic Viewpoint",
+          desc: "Breathtaking vistas across rugged valleys and high mountain ridges.",
+          cost: 0,
+          mins: 90,
+          category: "Sightseeing",
+        },
+        {
+          title: "Hearty Mountain Specialty Lunch",
+          desc: "Warm comforting local dishes at a family-run mountain tavern.",
+          cost: 20,
+          mins: 75,
+          category: "Food & Dining",
+        },
+        {
+          title: "Historic Monastic Fortress & Heritage Trail",
+          desc: "Centuries-old stone architecture and cultural museum exhibits.",
+          cost: 10,
+          mins: 120,
+          category: "Culture & History",
+        },
+      ],
+    };
+  }
+
+  // 2. Desert / Middle East
+  if (
+    /dubai|abu dhabi|doha|qatar|cairo|egypt|riyadh|saudi|marrakech|morocco|oman|muscat|jordan|amman|petra|jaisalmer/i.test(
+      place
+    )
+  ) {
+    return {
+      templates: {
+        "Culture & History": [
+          {
+            title: "Historic Heritage Quarter & Traditional Souk Walk",
+            desc: "Explore winding alleys, traditional wind-tower architecture, and historic trading routes.",
+            cost: 0,
+            mins: 120,
+          },
+          {
+            title: "Heritage Palace & Islamic Arts Museum Tour",
+            desc: "Admire historic royal courtyards, intricate stone carvings, and classical art collections.",
+            cost: 20,
+            mins: 120,
+          },
+          {
+            title: "Ancient Citadel & Cultural Monument Discovery",
+            desc: "Walk through historic fortifications and learn the deep historical heritage of the region.",
+            cost: 15,
+            mins: 120,
+          },
+        ],
+        "Food & Dining": [
+          {
+            title: "Traditional Mezze & Regional Specialty Feast",
+            desc: "Enjoy authentic aromatic rice dishes, grilled skewers, flatbreads, and regional spiced delicacies.",
+            cost: 35,
+            mins: 90,
+          },
+          {
+            title: "Historic Souk Street Food & Spices Sampling",
+            desc: "Taste freshly roasted nuts, local dates, infused teas, and savory pastries in bustling market stalls.",
+            cost: 20,
+            mins: 75,
+          },
+          {
+            title: "Sunset Rooftop Lounge & Mint Tea Refreshment",
+            desc: "Relax with traditional tea, dates, and panoramic skyline or desert-fringe views.",
+            cost: 18,
+            mins: 60,
+          },
+        ],
+        "Sightseeing": [
+          {
+            title: "Modern Architectural Marvels & Observation Deck",
+            desc: "Experience breathtaking panoramic views from world-renowned architectural observation points.",
+            cost: 35,
+            mins: 90,
+          },
+          {
+            title: "Historic Creek & Waterfront Promenade Walk",
+            desc: "Stroll along historic waterways, traditional wooden boat fronts, and lively evening esplanades.",
+            cost: 5,
+            mins: 75,
+          },
+          {
+            title: "Illuminated Evening Skyline & Fountain Spectacle",
+            desc: "Witness iconic fountains, dazzling architectural light shows, and vibrant city nightlife.",
+            cost: 0,
+            mins: 60,
+          },
+        ],
+        "Nature": [
+          {
+            title: "Desert Oasis & Botanical Parkland Walk",
+            desc: "Discover lush date palms, flowering desert flora, and tranquil shaded gardens.",
+            cost: 10,
+            mins: 90,
+          },
+          {
+            title: "Sunset Desert Dunes Excursion",
+            desc: "Experience rolling golden sand dunes during peaceful twilight hours.",
+            cost: 30,
+            mins: 150,
+          },
+        ],
+        "Adventure": [
+          {
+            title: "Desert Safari & Sand Dunes Experience",
+            desc: "Enjoy scenic desert driving, sand boarding, and traditional evening hospitality.",
+            cost: 55,
+            mins: 210,
+          },
+          {
+            title: "Waterfront Marine Cruise or Marina Tour",
+            desc: "Sail past iconic coastal architecture and city landmarks from the water.",
+            cost: 40,
+            mins: 120,
+          },
+        ],
+        "Shopping": [
+          {
+            title: "Gold, Perfume & Spice Souk Exploration",
+            desc: "Browse authentic saffron, artisanal oils, traditional jewelry, and woven textiles.",
+            cost: 0,
+            mins: 90,
+          },
+        ],
+        "Relaxation": [
+          {
+            title: "Traditional Hammam & Thermal Spa Treatment",
+            desc: "Indulge in steam baths, restorative body treatments, and calming aromatic relaxation halls.",
+            cost: 45,
+            mins: 120,
+          },
+        ],
+      },
+      defaultTemplates: [
+        {
+          title: "City Center Exploration & Heritage Promenade",
+          desc: "Orientation walk across grand boulevards and historic waterfront districts.",
+          cost: 0,
+          mins: 90,
+          category: "Sightseeing",
+        },
+        {
+          title: "Traditional Regional Lunch & Refreshment",
+          desc: "Taste signature regional dishes at a popular local establishment.",
+          cost: 25,
+          mins: 75,
+          category: "Food & Dining",
+        },
+        {
+          title: "Cultural Heritage Museum & Architecture",
+          desc: "Discover centuries of regional history and artistic craftsmanship.",
+          cost: 15,
+          mins: 120,
+          category: "Culture & History",
+        },
+      ],
+    };
+  }
+
+  // 3. South Asia / Indian Subcontinent
+  if (
+    /delhi|mumbai|bangalore|bengaluru|kolkata|chennai|hyderabad|agra|varanasi|jaipur|kerala|goa|amritsar|udaipur|lucknow|kathmandu|colombo|sri lanka/i.test(
+      place
+    )
+  ) {
+    return {
+      templates: {
+        "Culture & History": [
+          {
+            title: "Historic Fort & UNESCO Monument Exploration",
+            desc: "Discover grand historic forts, intricate sandstone arches, and majestic regional architecture.",
+            cost: 15,
+            mins: 150,
+          },
+          {
+            title: "Ancient Heritage Bazaar & Old Quarter Heritage Walk",
+            desc: "Wander through centuries-old alleys, vibrant spice markets, and historic town squares.",
+            cost: 0,
+            mins: 120,
+          },
+          {
+            title: "National Museum & Ancient Art Gallery",
+            desc: "Admire rare sculptures, historic manuscripts, and ancient archaeological treasures.",
+            cost: 10,
+            mins: 120,
+          },
+        ],
+        "Food & Dining": [
+          {
+            title: "Famous Street Food & Culinary Heritage Tasting",
+            desc: "Sample iconic regional chaats, kebabs, warm flatbreads, and renowned local street delicacies.",
+            cost: 15,
+            mins: 90,
+          },
+          {
+            title: "Authentic Regional Thali & Dining Experience",
+            desc: "Savor a multi-course traditional meal featuring regional curries, fragrant rice, and fresh breads.",
+            cost: 25,
+            mins: 90,
+          },
+          {
+            title: "Historic Tea House & Sweetshop Visit",
+            desc: "Enjoy freshly brewed spiced chai, traditional artisanal sweets, and refreshing savory snacks.",
+            cost: 8,
+            mins: 60,
+          },
+        ],
+        "Sightseeing": [
+          {
+            title: "Iconic City Memorial & Central Avenue Tour",
+            desc: "Visit historic monuments, national memorials, and stately tree-lined boulevards.",
+            cost: 0,
+            mins: 90,
+          },
+          {
+            title: "Bustling Neighborhood Rickshaw & Walking Discovery",
+            desc: "Experience the vibrant sights, sounds, and authentic rhythm of local neighborhoods.",
+            cost: 10,
+            mins: 90,
+          },
+          {
+            title: "Evening Heritage Sound & Light Spectacle",
+            desc: "Watch historic ramparts illuminate with dramatic narrations of the city's rich history.",
+            cost: 12,
+            mins: 75,
+          },
+        ],
+        "Nature": [
+          {
+            title: "Heritage Parkland & Historic Botanical Gardens Walk",
+            desc: "Stroll through tranquil landscaped gardens, shaded pavilions, and ancient tomb monuments.",
+            cost: 5,
+            mins: 90,
+          },
+          {
+            title: "Serene Lakefront / River Promenade & Birdwatching",
+            desc: "Unwind along peaceful water bodies home to migratory birds and scenic greenery.",
+            cost: 0,
+            mins: 90,
+          },
+        ],
+        "Adventure": [
+          {
+            title: "Early Morning Heritage Bicycle Tour",
+            desc: "Cycle through quiet morning streets and historic landmarks before the bustling day begins.",
+            cost: 25,
+            mins: 150,
+          },
+          {
+            title: "Crafts Village & Artisan Pottery Workshop",
+            desc: "Engage with traditional master weavers, potters, and folk artisans.",
+            cost: 20,
+            mins: 120,
+          },
+        ],
+        "Shopping": [
+          {
+            title: "Handicrafts Emporium & Silk Market",
+            desc: "Shop for handloom textiles, embroidered garments, brassware, and local souvenirs.",
+            cost: 0,
+            mins: 90,
+          },
+        ],
+        "Relaxation": [
+          {
+            title: "Ayurvedic Wellness & Herbal Rejuvenation Session",
+            desc: "Experience holistic therapeutic massage, herbal oils, and deep wellness relaxation.",
+            cost: 35,
+            mins: 120,
+          },
+        ],
+      },
+      defaultTemplates: [
+        {
+          title: "Heritage District Orientation Walk",
+          desc: "Walk through iconic historic monuments and lively town bazaars.",
+          cost: 0,
+          mins: 90,
+          category: "Sightseeing",
+        },
+        {
+          title: "Traditional Regional Thali Lunch",
+          desc: "Authentic multi-dish local meal highlighting regional spices and flavors.",
+          cost: 15,
+          mins: 75,
+          category: "Food & Dining",
+        },
+        {
+          title: "Historic Architectural Monument Visit",
+          desc: "Centuries-old stone masonry and cultural heritage galleries.",
+          cost: 10,
+          mins: 120,
+          category: "Culture & History",
+        },
+      ],
+    };
+  }
+
+  // 4. Coastal / Tropical / Island
+  if (
+    /bali|phuket|bangkok|thailand|vietnam|hanoi|da nang|maldives|hawaii|cancun|caribbean|santorini|mykonos|ibiza|fiji|tahiti|seychelles|mauritius/i.test(
+      place
+    )
+  ) {
+    return {
+      templates: {
+        "Culture & History": [
+          {
+            title: "Coastal Temple & Sacred Sanctuary Visit",
+            desc: "Explore cliffside shrines, intricate ceremonial gateways, and sacred oceanfront sites.",
+            cost: 10,
+            mins: 120,
+          },
+          {
+            title: "Traditional Fishing Village & Cultural Center Walk",
+            desc: "Learn about maritime heritage, traditional stilt houses, and local coastal life.",
+            cost: 0,
+            mins: 90,
+          },
+          {
+            title: "Regional Folk Art & Island Heritage Gallery",
+            desc: "Discover traditional wood carving, batik textiles, and island craftsmanship.",
+            cost: 12,
+            mins: 90,
+          },
+        ],
+        "Food & Dining": [
+          {
+            title: "Fresh Coastal Seafood & Sunset Beach Dining",
+            desc: "Taste freshly grilled seafood with aromatic herbs and sauces right along the shoreline.",
+            cost: 30,
+            mins: 100,
+          },
+          {
+            title: "Tropical Fruit Market & Island Refreshment Stop",
+            desc: "Sample exotic tropical fruits, fresh coconut water, and artisanal smoothies.",
+            cost: 10,
+            mins: 60,
+          },
+          {
+            title: "Beachfront Café & Seaside Sunset Beverage",
+            desc: "Sip refreshing drinks while enjoying warm sea breezes and panoramic ocean views.",
+            cost: 15,
+            mins: 60,
+          },
+        ],
+        "Sightseeing": [
+          {
+            title: "Coastal Cliff Viewpoint & Ocean Panorama",
+            desc: "Enjoy dramatic views of turquoise waters, sea arches, and crashing waves.",
+            cost: 5,
+            mins: 75,
+          },
+          {
+            title: "Island Marina Promenade & Harbor Walk",
+            desc: "Stroll past colorful sailboats, coastal boutiques, and lively boardwalk cafes.",
+            cost: 0,
+            mins: 75,
+          },
+          {
+            title: "Twilight Beachfront Cultural Performance",
+            desc: "Watch authentic island music and traditional evening dance performances.",
+            cost: 20,
+            mins: 75,
+          },
+        ],
+        "Nature": [
+          {
+            title: "Lush Coastal Rain Forest & Waterfall Trail",
+            desc: "Hike through lush jungle trails leading to serene hidden waterfalls and natural pools.",
+            cost: 8,
+            mins: 120,
+          },
+          {
+            title: "Marine Nature Reserve & Coral Reef Walk",
+            desc: "Explore shallow coral gardens, marine sanctuaries, and protected coastal wildlife.",
+            cost: 15,
+            mins: 120,
+          },
+        ],
+        "Adventure": [
+          {
+            title: "Snorkeling & Coastal Water Sports Excursion",
+            desc: "Swim among vibrant marine life and coral reefs in crystal-clear waters.",
+            cost: 45,
+            mins: 180,
+          },
+          {
+            title: "Sunrise Coastal Kayaking or Paddleboard Adventure",
+            desc: "Paddle along serene coves, hidden caves, and quiet morning shorelines.",
+            cost: 35,
+            mins: 120,
+          },
+        ],
+        "Shopping": [
+          {
+            title: "Island Craft Market & Beachfront Boutiques",
+            desc: "Browse woven bags, handmade jewelry, and local tropical souvenirs.",
+            cost: 0,
+            mins: 90,
+          },
+        ],
+        "Relaxation": [
+          {
+            title: "Seaside Spa & Aromatherapy Massage",
+            desc: "Recharge with soothing ocean sounds, coconut scrubs, and holistic wellness treatments.",
+            cost: 40,
+            mins: 90,
+          },
+        ],
+      },
+      defaultTemplates: [
+        {
+          title: "Coastal Promenade & Scenic Viewpoint",
+          desc: "Walk along the waterfront with panoramic ocean vistas.",
+          cost: 0,
+          mins: 90,
+          category: "Sightseeing",
+        },
+        {
+          title: "Fresh Seafood Lunch by the Shore",
+          desc: "Savor local ocean catches prepared with fresh regional spices.",
+          cost: 25,
+          mins: 75,
+          category: "Food & Dining",
+        },
+        {
+          title: "Historic Coastal Shrine & Cultural Site",
+          desc: "Explore traditional architecture and sacred oceanfront monument.",
+          cost: 10,
+          mins: 90,
+          category: "Culture & History",
+        },
+      ],
+    };
+  }
+
+  // 5. East Asian
+  if (
+    /tokyo|kyoto|osaka|japan|seoul|korea|beijing|shanghai|taiwan|taipei|hong kong/i.test(
+      place
+    )
+  ) {
+    return {
+      templates: {
+        "Culture & History": [
+          {
+            title: "Ancient Shrine & Historic Temple Grounds Exploration",
+            desc: "Wander through wooden pagoda gates, serene rock courtyards, and tranquil incense halls.",
+            cost: 10,
+            mins: 120,
+          },
+          {
+            title: "Historic Traditional Quarter & Preservation District",
+            desc: "Stroll past wooden townhouses, tea houses, and lantern-lit stone pathways.",
+            cost: 0,
+            mins: 120,
+          },
+          {
+            title: "National Cultural Museum & Ceramic Arts Gallery",
+            desc: "Discover centuries of calligraphy, historical artifacts, and delicate porcelain treasures.",
+            cost: 15,
+            mins: 120,
+          },
+        ],
+        "Food & Dining": [
+          {
+            title: "Vibrant Food Alley & Night Market Tasting Tour",
+            desc: "Sample savory dumplings, grilled skewers, noodle bowls, and sweet street treats.",
+            cost: 25,
+            mins: 90,
+          },
+          {
+            title: "Authentic Local Dining & Regional Specialty Dinner",
+            desc: "Enjoy a chef-crafted meal featuring authentic seasonal regional specialties.",
+            cost: 35,
+            mins: 90,
+          },
+          {
+            title: "Traditional Tea Ceremony & Matcha Experience",
+            desc: "Participate in a peaceful tea preparation ritual accompanied by seasonal confections.",
+            cost: 25,
+            mins: 60,
+          },
+        ],
+        "Sightseeing": [
+          {
+            title: "Panoramic Tower Observation Deck & Skyline View",
+            desc: "Gaze across the vast city expanse and distant mountains from iconic observation towers.",
+            cost: 25,
+            mins: 90,
+          },
+          {
+            title: "Bustling Urban Plazas & Cultural Crossing Walk",
+            desc: "Experience famous pedestrian plazas, lively districts, and kinetic city street life.",
+            cost: 0,
+            mins: 75,
+          },
+          {
+            title: "Scenic Waterfront Bay & Island Park Walk",
+            desc: "Stroll futuristic waterfront promenades and enjoy gentle coastal sea breezes.",
+            cost: 0,
+            mins: 75,
+          },
+        ],
+        "Nature": [
+          {
+            title: "Landscaped Zen Garden & Serene Forest Sanctuary",
+            desc: "Walk through bamboo groves, moss gardens, and historic shrine forest paths.",
+            cost: 8,
+            mins: 90,
+          },
+          {
+            title: "Scenic Riverside Promenade & Tree-Lined Walk",
+            desc: "Enjoy picturesque tree-lined paths along gentle flowing city waterways.",
+            cost: 0,
+            mins: 90,
+          },
+        ],
+        "Adventure": [
+          {
+            title: "Guided Neighborhood Cycling Discovery",
+            desc: "Pedal through backstreets, hidden residential alleys, and neighborhood parks.",
+            cost: 30,
+            mins: 150,
+          },
+          {
+            title: "Traditional Crafts & Artisan Workshop",
+            desc: "Create your own handmade keepsake under the guidance of a master artisan.",
+            cost: 40,
+            mins: 120,
+          },
+        ],
+        "Shopping": [
+          {
+            title: "Traditional Craft Stalls & Modern Design Boutiques",
+            desc: "Explore stationery, pottery, regional crafts, and unique local fashion.",
+            cost: 0,
+            mins: 90,
+          },
+        ],
+        "Relaxation": [
+          {
+            title: "Traditional Onsen / Bathhouse Experience",
+            desc: "Soak in hot natural mineral waters and experience rejuvenating tranquility.",
+            cost: 25,
+            mins: 120,
+          },
+        ],
+      },
+      defaultTemplates: [
+        {
+          title: "City Center & Landmark Exploration",
+          desc: "Walk across historic avenues and vibrant cultural districts.",
+          cost: 0,
+          mins: 90,
+          category: "Sightseeing",
+        },
+        {
+          title: "Regional Specialty Lunch",
+          desc: "Authentic local flavors and freshly prepared signature noodles.",
+          cost: 20,
+          mins: 75,
+          category: "Food & Dining",
+        },
+        {
+          title: "Historic Cultural Monument Discovery",
+          desc: "Visit centuries-old shrine grounds and regional heritage treasures.",
+          cost: 10,
+          mins: 90,
+          category: "Culture & History",
+        },
+      ],
+    };
+  }
+
+  // 6. European / Western Classical
+  if (
+    /paris|rome|london|florence|venice|vienna|prague|madrid|barcelona|amsterdam|berlin|lisbon|budapest|munich|milan|dublin|edinburgh|switzerland/i.test(
+      place
+    )
+  ) {
+    return {
+      templates: {
+        "Culture & History": [
+          {
+            title: "Historic Old Town Walking Tour & Landmarks",
+            desc: "Explore historic architecture, iconic city squares, and UNESCO heritage monuments.",
+            cost: 0,
+            mins: 120,
+          },
+          {
+            title: "Renowned Art & History Museum Exhibition",
+            desc: "Visit world-class galleries showcasing timeless masterpieces and cultural artifacts.",
+            cost: 25,
+            mins: 150,
+          },
+          {
+            title: "Historic Royal Palace & Architectural Landmark",
+            desc: "Discover centuries-old royal residence halls, civic courtyards, and grand architecture.",
+            cost: 20,
+            mins: 120,
+          },
+        ],
+        "Food & Dining": [
+          {
+            title: "Traditional Market Hall & Artisan Food Tasting",
+            desc: "Sample regional cheeses, freshly baked breads, warm pastries, and local delicacies.",
+            cost: 30,
+            mins: 90,
+          },
+          {
+            title: "Authentic Neighborhood Bistro / Trattoria Dinner",
+            desc: "Savor chef-curated seasonal dishes paired with regional refreshments in a cozy setting.",
+            cost: 45,
+            mins: 120,
+          },
+          {
+            title: "Scenic Waterfront Café & Coffee Break",
+            desc: "Relax with artisanal espresso, fresh pastries, and panoramic city vistas.",
+            cost: 15,
+            mins: 60,
+          },
+        ],
+        "Sightseeing": [
+          {
+            title: "Panoramic City Viewpoint & Observation Deck",
+            desc: "Enjoy sweeping 360-degree aerial views of the city skyline and historic monuments.",
+            cost: 22,
+            mins: 90,
+          },
+          {
+            title: "Iconic Waterfront Promenade & Bridge Walk",
+            desc: "Stroll along historic waterways, bustling esplanades, and famous bridges.",
+            cost: 0,
+            mins: 75,
+          },
+          {
+            title: "Evening Illuminated River / Harbor Cruise",
+            desc: "Take in glowing monument facades and skyline reflections from the water.",
+            cost: 35,
+            mins: 90,
+          },
+        ],
+        "Nature": [
+          {
+            title: "Botanical Gardens & Tranquil Parkland Walk",
+            desc: "Wander through landscaped formal gardens, arboretums, and quiet fountains.",
+            cost: 10,
+            mins: 90,
+          },
+          {
+            title: "Scenic Nature Trail & Viewpoint Excursion",
+            desc: "Hike well-marked natural paths with vistas of surrounding countryside and hills.",
+            cost: 0,
+            mins: 150,
+          },
+        ],
+        "Adventure": [
+          {
+            title: "Guided Bike Tour of Hidden Neighborhoods",
+            desc: "Pedal through scenic alleys, historic parks, and vibrant cultural quarters.",
+            cost: 35,
+            mins: 150,
+          },
+          {
+            title: "Panoramic Funicular & Hilltop Viewpoint",
+            desc: "Ascend historic hill railways for commanding views and picturesque hillside trails.",
+            cost: 20,
+            mins: 120,
+          },
+        ],
+        "Shopping": [
+          {
+            title: "Artisan Boutiques & Historic Covered Passages",
+            desc: "Browse independent local designers, antique bookshops, and perfume makers.",
+            cost: 0,
+            mins: 120,
+          },
+        ],
+        "Relaxation": [
+          {
+            title: "Thermal Bath & Wellness Retreat",
+            desc: "Unwind in rejuvenating natural thermal pools, saunas, and steam rooms.",
+            cost: 40,
+            mins: 150,
+          },
+        ],
+      },
+      defaultTemplates: [
+        {
+          title: "City Center Exploration & Architectural Discovery",
+          desc: "Orientation walk across central boulevards, historic squares, and gardens.",
+          cost: 0,
+          mins: 120,
+          category: "Sightseeing",
+        },
+        {
+          title: "Culinary Highlights & Traditional Lunch",
+          desc: "Taste signature local dishes at an authentic family-run establishment.",
+          cost: 28,
+          mins: 90,
+          category: "Food & Dining",
+        },
+        {
+          title: "Landmark Monument Tour & Scenic Sunset",
+          desc: "Visit the city's foremost cultural icon followed by golden-hour photography.",
+          cost: 20,
+          mins: 120,
+          category: "Culture & History",
+        },
+      ],
+    };
+  }
+
+  // 7. Universal / Global Neutral Fallback (works accurately for any global city without assumptions)
+  return {
+    templates: {
+      "Culture & History": [
+        {
+          title: "Historic Old Town & Central Square Walking Tour",
+          desc: "Explore local architectural landmarks, historic town squares, and civic monuments.",
+          cost: 0,
+          mins: 120,
+        },
+        {
+          title: "Cultural Heritage & Fine Arts Museum",
+          desc: "Visit renowned local exhibitions showcasing regional history, art, and cultural artifacts.",
+          cost: 15,
+          mins: 120,
+        },
+        {
+          title: "Landmark Heritage Monument & Guided Exploration",
+          desc: "Discover the city's foremost historic structure and learn its origins and stories.",
+          cost: 15,
+          mins: 120,
+        },
+      ],
+      "Food & Dining": [
+        {
+          title: "Local Market Hall & Signature Dishes Tasting",
+          desc: "Sample authentic local produce, regional signature snacks, and freshly prepared delicacies.",
+          cost: 25,
+          mins: 90,
+        },
+        {
+          title: "Traditional Neighborhood Dining Experience",
+          desc: "Savor authentic regional dishes prepared fresh at a well-regarded local establishment.",
+          cost: 35,
+          mins: 90,
+        },
+        {
+          title: "Scenic Café & Traditional Beverage Tasting",
+          desc: "Relax with artisanal local coffee, tea, and regional specialty refreshments.",
+          cost: 12,
+          mins: 60,
+        },
+      ],
+      "Sightseeing": [
+        {
+          title: "Panoramic City Viewpoint & Scenic Lookout",
+          desc: "Take in sweeping views of the city layout, surrounding landscape, and skyline.",
+          cost: 15,
+          mins: 90,
+        },
+        {
+          title: "Historic Promenade & Iconic Waterfront Walk",
+          desc: "Stroll along bustling central esplanades, civic plazas, and pedestrian thoroughfares.",
+          cost: 0,
+          mins: 75,
+        },
+        {
+          title: "Evening Illuminated Monuments & Sunset Photography",
+          desc: "Experience the city's landmarks bathed in evening light during the golden hour.",
+          cost: 0,
+          mins: 75,
+        },
+      ],
+      "Nature": [
+        {
+          title: "City Botanical Parkland & Greenery Walk",
+          desc: "Enjoy tranquil walking trails through mature shade trees, native plants, and water features.",
+          cost: 5,
+          mins: 90,
+        },
+        {
+          title: "Scenic Nature Reserve & Hillside Walking Trail",
+          desc: "Breathe fresh air along natural scenic pathways with panoramic lookouts.",
+          cost: 0,
+          mins: 120,
+        },
+      ],
+      "Adventure": [
+        {
+          title: "Guided Neighborhood Discovery Walk or Cycling",
+          desc: "Explore vibrant local districts, hidden streets, and cultural hotspots off the beaten track.",
+          cost: 25,
+          mins: 150,
+        },
+        {
+          title: "Artisan Workshop & Craft Studio Visit",
+          desc: "Learn firsthand about authentic local crafts, textiles, and traditional workmanship.",
+          cost: 20,
+          mins: 120,
+        },
+      ],
+      "Shopping": [
+        {
+          title: "Artisan Boutiques & Historic Market Stalls",
+          desc: "Browse independent local designers, handcrafted souvenirs, and regional specialties.",
+          cost: 0,
+          mins: 90,
+        },
+      ],
+      "Relaxation": [
+        {
+          title: "Tranquil Wellness Retreat & Thermal Bath / Spa",
+          desc: "Unwind with relaxing wellness facilities, peaceful lounges, and therapeutic treatments.",
+          cost: 35,
+          mins: 120,
+        },
+      ],
+    },
+    defaultTemplates: [
+      {
+        title: "City Highlights & Landmark Walk",
+        desc: "Orientation walk across central avenues, historic squares, and gardens.",
+        cost: 0,
+        mins: 90,
+        category: "Sightseeing",
+      },
+      {
+        title: "Authentic Local Lunch Experience",
+        desc: "Taste signature regional dishes at a popular neighborhood spot.",
+        cost: 22,
+        mins: 75,
+        category: "Food & Dining",
+      },
+      {
+        title: "Historic Cultural Monument Discovery",
+        desc: "Visit the city's foremost cultural icon and learn its heritage.",
+        cost: 15,
+        mins: 100,
+        category: "Culture & History",
+      },
+    ],
+  };
+}
+
 /**
  * Heuristic Travel Planner
  * Produces structured, realistic itinerary drafts matching user preferences.
@@ -109,138 +1099,6 @@ export function generateHeuristicTrip(req: AITripRequest): AITripDraft {
 
   const interests = req.interests.length > 0 ? req.interests : ["Sightseeing", "Food & Dining"];
 
-  // Activity templates pool based on interests
-  const templates: Record<string, { title: string; desc: string; cost: number; mins: number }[]> = {
-    "Culture & History": [
-      {
-        title: "Historic Old Town Walking Tour & Landmarks",
-        desc: "Explore historic architecture, iconic city squares, and UNESCO heritage monuments.",
-        cost: 0,
-        mins: 120,
-      },
-      {
-        title: "Renowned Art & History Museum Exhibition",
-        desc: "Visit world-class galleries showcasing timeless masterpieces and cultural artifacts.",
-        cost: 25,
-        mins: 150,
-      },
-      {
-        title: "Heritage Palace & Ancient Cathedral Discovery",
-        desc: "Discover centuries-old royal residence halls and vaulted cathedral towers.",
-        cost: 20,
-        mins: 120,
-      },
-    ],
-    "Food & Dining": [
-      {
-        title: "Traditional Market Hall & Artisan Food Tasting",
-        desc: "Sample regional cheeses, warm pastries, fresh produce, and local delicacies.",
-        cost: 30,
-        mins: 90,
-      },
-      {
-        title: "Authentic Neighborhood Bistro Dinner",
-        desc: "Savor chef-curated seasonal dishes paired with regional wines in a cozy setting.",
-        cost: 45,
-        mins: 120,
-      },
-      {
-        title: "Scenic Waterfront Café & Coffee Break",
-        desc: "Relax with artisanal espresso, fresh pastries, and panoramic city vistas.",
-        cost: 15,
-        mins: 60,
-      },
-    ],
-    "Sightseeing": [
-      {
-        title: "Panoramic City Viewpoint & Observation Deck",
-        desc: "Enjoy sweeping 360-degree aerial views of the city skyline and surrounding geography.",
-        cost: 22,
-        mins: 90,
-      },
-      {
-        title: "Iconic Waterfront Promenade & Bridge Walk",
-        desc: "Stroll along historic waterways, bustling esplanades, and famous bridges.",
-        cost: 0,
-        mins: 75,
-      },
-      {
-        title: "Evening Illuminated River / Harbor Cruise",
-        desc: "Take in glowing monument facades and skyline reflections from the water.",
-        cost: 35,
-        mins: 90,
-      },
-    ],
-    "Nature": [
-      {
-        title: "Botanical Gardens & Tranquil Parkland Walk",
-        desc: "Wander through landscaped Japanese gardens, arboretums, and quiet fountains.",
-        cost: 10,
-        mins: 90,
-      },
-      {
-        title: "Scenic Coastal / Mountain Trail Excursion",
-        desc: "Hike well-marked natural ridges with breathtaking vistas of lakes and valleys.",
-        cost: 0,
-        mins: 180,
-      },
-    ],
-    "Adventure": [
-      {
-        title: "Guided Bike Tour of Hidden Neighborhoods",
-        desc: "Pedal through scenic alleys, historic parks, and vibrant cultural quarters.",
-        cost: 35,
-        mins: 150,
-      },
-      {
-        title: "Mountain Cable Car & Alpine Ridge Adventure",
-        desc: "Ascend high-altitude cableways for alpine scenery and exhilarating walk trails.",
-        cost: 55,
-        mins: 210,
-      },
-    ],
-    "Shopping": [
-      {
-        title: "Artisan Boutiques & Historic Covered Passages",
-        desc: "Browse independent local designers, antique bookshops, and perfume makers.",
-        cost: 0,
-        mins: 120,
-      },
-    ],
-    "Relaxation": [
-      {
-        title: "Thermal Bath & Wellness Retreat",
-        desc: "Unwind in rejuvenating natural thermal pools, saunas, and steam rooms.",
-        cost: 40,
-        mins: 150,
-      },
-    ],
-  };
-
-  const defaultTemplates = [
-    {
-      title: "City Center Exploration & Architectural Discovery",
-      desc: "Orientation walk across central boulevards, historic squares, and gardens.",
-      cost: 0,
-      mins: 120,
-      category: "Sightseeing",
-    },
-    {
-      title: "Culinary Highlights & Traditional Lunch",
-      desc: "Taste signature local dishes at an authentic family-run establishment.",
-      cost: 28,
-      mins: 90,
-      category: "Food & Dining",
-    },
-    {
-      title: "Landmark Monument Tour & Scenic Sunset",
-      desc: "Visit the city's foremost cultural icon followed by golden-hour photography.",
-      cost: 20,
-      mins: 120,
-      category: "Culture & History",
-    },
-  ];
-
   const days: AIGeneratedDay[] = [];
   let cumulativeEstCost = 0;
 
@@ -252,6 +1110,7 @@ export function generateHeuristicTrip(req: AITripRequest): AITripDraft {
     );
     const currentCity = destinations[destIndex];
     const currentDate = addDaysToDate(req.startDate, d - 1);
+    const { templates, defaultTemplates } = getDestinationTemplates(req.destination, currentCity);
 
     const dayActivities: AIGeneratedActivity[] = [];
     const timeSlots = [
@@ -279,7 +1138,7 @@ export function generateHeuristicTrip(req: AITripRequest): AITripDraft {
         durationMinutes: picked.mins || 90,
         estimatedCost: estCost,
         isEstimated: true,
-        recommendationReason: `Recommended for ${req.pace} pacing matching your interest in ${interestCategory}.`,
+        recommendationReason: `Planning estimate for ${req.pace} pacing matching your interest in ${interestCategory} (indicative estimate; not a guaranteed price).`,
       });
     }
 
@@ -340,7 +1199,7 @@ export function generateHeuristicTrip(req: AITripRequest): AITripDraft {
     },
     days,
     disclaimer:
-      "All activity costs, durations, and timings are planning estimates. Real-time ticket prices, entry availability, and booking hours require independent verification before travel.",
+      "All activity costs, durations, and timings are planning estimates. Real-time ticket prices, entry availability, and booking hours require independent verification before travel. GlobeTrotter does not present estimated costs as guaranteed live prices.",
     source: "heuristic_fallback",
   };
 }
@@ -376,7 +1235,7 @@ Strict Rules:
     req.pace === "relaxed" ? "2" : req.pace === "fast-paced" ? "4" : "3"
   } realistic activities in the destination city.
 3. Use only these category names: "Sightseeing", "Culture & History", "Food & Dining", "Adventure", "Nature", "Entertainment", "Shopping", "Relaxation".
-4. Provide estimated costs per activity in ${req.currency} (number only, 0 for free parks/walking). Never claim live confirmed prices.
+4. Provide estimated costs per activity in ${req.currency} (number only, 0 for free parks/walking). Never claim live confirmed prices; all amounts are planning approximations.
 5. Provide realistic 24-hour start and end times in "HH:MM" format.
 6. Provide an honest budget feasibility assessment comparing the total estimated activity cost to the user's budget.
 
@@ -443,6 +1302,9 @@ Return ONLY a valid JSON object matching this schema:
           generationConfig: {
             temperature: 0.4,
             responseMimeType: "application/json",
+            ...(model.includes("3") || model.includes("2.5") || model.includes("flash")
+              ? { thinkingConfig: { thinkingBudget: 0 } }
+              : {}),
           },
         }),
       });
@@ -488,7 +1350,10 @@ Return ONLY a valid JSON object matching this schema:
           durationMinutes: Number(act.durationMinutes) || 90,
           estimatedCost: Math.max(0, Number(act.estimatedCost) || 0),
           isEstimated: true,
-          recommendationReason: String(act.recommendationReason || "Matched with your trip interests."),
+          recommendationReason: String(
+            act.recommendationReason ||
+              "Matched with your trip interests (planning estimate; not a verified price)."
+          ),
         }));
 
         return {
@@ -535,7 +1400,7 @@ Return ONLY a valid JSON object matching this schema:
         },
         days: sanitizedDays,
         disclaimer:
-          "All activity costs, durations, and timings are planning estimates generated by Gemini. Real-time ticket prices, entry availability, and booking hours require independent verification before travel.",
+          "All activity costs, durations, and timings are planning estimates generated by Gemini. Real-time ticket prices, entry availability, and booking hours require independent verification before travel. GlobeTrotter does not present estimated costs as guaranteed live prices.",
         source: "gemini",
       };
     } catch (err: unknown) {

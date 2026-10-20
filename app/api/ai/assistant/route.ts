@@ -110,14 +110,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 4. Default trip context
-    let destination = reqDest || "Leh, Ladakh";
-    let tripTitle = "Travel Plan";
-    let dates = "Upcoming";
-    let budget = reqBudget || "Flexible";
-    let activitiesSummary = "General sightseeing and cultural exploration.";
+    // 4. Determine Trip Context dynamically
+    let hasTripContext = false;
+    let destination = "";
+    let tripTitle = "";
+    let dates = "";
+    let budget = "";
+    let activitiesSummary = "";
 
-    // 5. If tripId is provided, verify trip ownership strictly
+    // 5. If tripId is provided, verify trip ownership strictly and read actual trip context
     if (tripId !== undefined && tripId !== null) {
       if (typeof tripId !== "string" || !tripId.trim()) {
         return NextResponse.json(
@@ -154,21 +155,40 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      tripTitle = trip.title || tripTitle;
-      budget = trip.total_budget ? `${trip.currency || "USD"} ${trip.total_budget}` : budget;
-      dates = trip.start_date
-        ? `${trip.start_date} to ${trip.end_date || "Open"}`
-        : dates;
+      hasTripContext = true;
+      tripTitle = trip.title ? trip.title.trim() : "Travel Plan";
 
-      const { data: stops } = await supabase
-        .from("trip_stops")
-        .select("custom_city_name")
-        .eq("trip_id", trip.id);
-
-      if (stops && stops.length > 0) {
-        destination = stops.map((s) => s.custom_city_name).filter(Boolean).join(", ");
+      // Calculate dates from actual trip data
+      if (trip.start_date) {
+        dates = trip.end_date ? `${trip.start_date} to ${trip.end_date}` : `Starts on ${trip.start_date}`;
+      } else {
+        dates = "Dates not yet scheduled";
       }
 
+      const totalBudgetNum = Number(trip.total_budget);
+      const currency = trip.currency || "USD";
+
+      // Fetch stops to get authentic destination cities
+      const { data: stops } = await supabase
+        .from("trip_stops")
+        .select("custom_city_name, cities(name)")
+        .eq("trip_id", trip.id)
+        .order("order_index", { ascending: true });
+
+      if (stops && stops.length > 0) {
+        const stopNames = stops
+          .map((s: any) => s.custom_city_name || s.cities?.name)
+          .filter(Boolean);
+        if (stopNames.length > 0) {
+          destination = stopNames.join(", ");
+        }
+      }
+
+      if (!destination) {
+        destination = tripTitle && tripTitle !== "Travel Plan" ? tripTitle : "Your Trip Destination";
+      }
+
+      // Fetch actual scheduled itinerary items
       const { data: items } = await supabase
         .from("itinerary_items")
         .select("title, category, day_number, start_time, end_time, estimated_cost, currency")
@@ -177,10 +197,41 @@ export async function POST(request: NextRequest) {
         .order("order_index", { ascending: true });
 
       if (items && items.length > 0) {
+        const plannedCost = items.reduce(
+          (sum, it) => sum + (Number(it.estimated_cost) || 0),
+          0
+        );
+
+        if (totalBudgetNum > 0) {
+          const remaining = Math.max(0, totalBudgetNum - plannedCost);
+          budget = `${currency} ${totalBudgetNum.toLocaleString()} (Planned Activities: ${currency} ${plannedCost.toLocaleString()}, Remaining: ${currency} ${remaining.toLocaleString()})`;
+        } else {
+          budget = `Planned Activities: ${currency} ${plannedCost.toLocaleString()} (No overall budget cap set)`;
+        }
+
         activitiesSummary = items
-          .map((i) => `Day ${i.day_number}: ${i.title} (${i.category}${i.start_time ? `, ${i.start_time}` : ""})`)
+          .map(
+            (i) =>
+              `Day ${i.day_number}: ${i.title} [${i.category}]${
+                i.start_time ? ` (${i.start_time.slice(0, 5)}${i.end_time ? `-${i.end_time.slice(0, 5)}` : ""})` : ""
+              }${Number(i.estimated_cost) > 0 ? ` - ${i.currency || currency} ${i.estimated_cost}` : ""}`
+          )
           .join("\n");
+      } else {
+        activitiesSummary = "No activities scheduled yet.";
+        if (totalBudgetNum > 0) {
+          budget = `${currency} ${totalBudgetNum.toLocaleString()} (No activities scheduled yet)`;
+        } else {
+          budget = "No budget specified";
+        }
       }
+    } else if (reqDest && typeof reqDest === "string" && reqDest.trim()) {
+      hasTripContext = true;
+      destination = reqDest.trim();
+      tripTitle = `${destination} Plan`;
+      dates = "Dates not specified";
+      budget = reqBudget ? String(reqBudget) : "No budget specified";
+      activitiesSummary = "No activities scheduled yet.";
     }
 
     // 6. Read Gemini API Key exclusively from environment
@@ -192,8 +243,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 7. Build system prompt & chat turns
-    const systemPrompt = `You are GlobeTrotter Copilot, an expert AI travel assistant. Answer any travel-related or itinerary question naturally, concisely, and accurately based on the current trip context provided.
+    // 7. Build dynamic system prompt & chat turns based on genuine context
+    let systemPrompt = "";
+    let assistantGreeting = "";
+
+    if (hasTripContext) {
+      const isHighAltitude = /ladakh|leh|tibetan|himalay|alps|cusco|la paz|everest/i.test(destination);
+      const altitudeGuidance = isHighAltitude
+        ? "- Because this destination is in a high-altitude mountain region, provide realistic weather, temperature, and acclimatization advice when relevant."
+        : "";
+
+      systemPrompt = `You are GlobeTrotter Copilot, an expert AI travel assistant. Answer any travel-related or itinerary question naturally, concisely, and accurately based on the current trip context provided.
 
 === CURRENT TRIP CONTEXT ===
 Destination: ${destination}
@@ -205,7 +265,8 @@ ${activitiesSummary}
 
 === INSTRUCTIONS ===
 - Answer the user's question directly, naturally, and helpfully in markdown.
-- For practical travel questions (such as packing advice, weather, high-altitude advice, acclimatization, local food, or cultural etiquette), give comprehensive and realistic advice.
+- Tailor all recommendations, tips, weather, clothing, food, and culture strictly to the destination (${destination}). Do NOT introduce advice for unrelated destinations.
+${altitudeGuidance}
 - When recommending a specific activity that the user can add to their itinerary, provide its structured details so GlobeTrotter can present an actionable card. Format either as top-level JSON:
   {
     "replyText": "Markdown response text...",
@@ -221,6 +282,23 @@ ${activitiesSummary}
 - Do NOT return dummy, canned, or placeholder responses.
 `;
 
+      assistantGreeting = `Hello! I am your GlobeTrotter Copilot for **${tripTitle}** (${destination}). How can I assist with your plans, packing, local tips, or schedule today?`;
+    } else {
+      // When no trip is selected, respond generically without inventing trip details or destinations
+      systemPrompt = `You are GlobeTrotter Copilot, an expert AI travel assistant.
+
+=== CURRENT CONTEXT ===
+No specific trip is currently selected. Assist the user with general travel advice, destination recommendations, packing guidelines, flight/train planning, or whatever travel question they ask.
+- If the user mentions a specific destination in their question (e.g., Delhi, Paris, Tokyo), answer accurately and specifically for that destination.
+- Do NOT assume or invent a destination (such as Leh, Ladakh or Paris) if the user has not mentioned it.
+- Do NOT invent fake itinerary activities, scheduled dates, or budgets.
+- Answer questions directly, concisely, and helpfully in markdown.
+- Do NOT return dummy, canned, or placeholder responses.
+`;
+
+      assistantGreeting = `Hello! I am your GlobeTrotter Copilot. How can I help you explore destinations, plan your travels, or answer any travel questions today?`;
+    }
+
     const contents: Array<{ role: string; parts: Array<{ text: string }> }> = [
       {
         role: "user",
@@ -230,7 +308,7 @@ ${activitiesSummary}
         role: "model",
         parts: [
           {
-            text: `Hello! I am your GlobeTrotter Copilot for ${destination}. How can I assist you today?`,
+            text: assistantGreeting,
           },
         ],
       },

@@ -150,8 +150,8 @@ ${scheduleContext || "No activities scheduled yet."}
 ${loggedExpensesStr}
 
 === INSTRUCTIONS ===
-1. Answer ANY user question dynamically and contextually (e.g. clothing/packing advice, local customs, weather expectations, itinerary advice, budget status, fun facts, dining recommendations, hidden gems, day summaries).
-2. Never repeat canned or hardcoded responses.
+1. Answer ANY user question dynamically, naturally, and contextually, strictly tailored to the trip destination (${destinationsStr}).
+2. Do not introduce unsolicited advice for unrelated regions.
 3. If the user asks for suggestions or an activity recommendation, you may propose an actionable activity.
 4. Return your output strictly as a JSON object matching this schema:
 {
@@ -226,6 +226,9 @@ If no new activity is being suggested or the user is just asking a general quest
             temperature: 0.6,
             maxOutputTokens: 1200,
             responseMimeType: "application/json",
+            ...(model.includes("3") || model.includes("2.5") || model.includes("flash")
+              ? { thinkingConfig: { thinkingBudget: 0 } }
+              : {}),
           },
         }),
       });
