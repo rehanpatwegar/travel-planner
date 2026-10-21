@@ -209,6 +209,12 @@ export async function POST(request: NextRequest) {
 
     if (insertError) {
       console.error("Failed to insert city into catalog:", insertError.message);
+      if (insertError.code === "23505" || insertError.message?.toLowerCase().includes("duplicate key")) {
+        return NextResponse.json(
+          { error: `The city "${name.trim()}" in ${country.trim()} already exists in the catalog.` },
+          { status: 409 }
+        );
+      }
       return NextResponse.json(
         { error: `Database insert failed: ${insertError.message}` },
         { status: 500 }

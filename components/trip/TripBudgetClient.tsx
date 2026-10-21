@@ -112,6 +112,7 @@ export function TripBudgetClient({
 
   // Deleting Expense State
   const [deletingExpenseId, setDeletingExpenseId] = useState<string | null>(null);
+  const [deleteExpenseError, setDeleteExpenseError] = useState<string | null>(null);
 
   const primaryCurrency = useMemo(
     () => (trip.currency || "USD").trim().toUpperCase(),
@@ -412,6 +413,7 @@ export function TripBudgetClient({
     if (!confirm("Are you sure you want to remove this expense entry?")) return;
 
     setDeletingExpenseId(expenseId);
+    setDeleteExpenseError(null);
 
     try {
       const res = await fetch(`/api/trips/${trip.id}/expenses/${expenseId}`, {
@@ -426,7 +428,7 @@ export function TripBudgetClient({
       setExpenses((prev) => prev.filter((e) => e.id !== expenseId));
     } catch (err) {
       console.error("Failed to delete expense:", err);
-      alert("Error removing expense");
+      setDeleteExpenseError(err instanceof Error ? err.message : "Error removing expense");
     } finally {
       setDeletingExpenseId(null);
     }
@@ -934,6 +936,12 @@ export function TripBudgetClient({
             </CardHeader>
 
             <CardContent className="p-0">
+              {deleteExpenseError && (
+                <div className="m-3 flex items-start gap-2 rounded-lg border border-rose-200 bg-rose-50 p-2.5 text-xs text-rose-800">
+                  <AlertCircle className="h-3.5 w-3.5 shrink-0 text-rose-600 mt-0.5" />
+                  <p>{deleteExpenseError}</p>
+                </div>
+              )}
               {expenses.length === 0 ? (
                 <div className="p-8 text-center">
                   <p className="text-xs text-slate-400 italic">

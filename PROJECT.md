@@ -162,3 +162,25 @@ Implement one part at a time. Do not skip ahead without explicit approval.
 - Preserve existing files unless changes are necessary and explained.
 - Never commit `.env.local` or other secrets.
 
+## 10. Operational Setup, Migrations & Architecture Reference
+
+### Environment Variables (Required in `.env.local`)
+- `NEXT_PUBLIC_SUPABASE_URL`: Public HTTPS URL of the Supabase project.
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`: Public anonymous API key for client and server authentication.
+- `GEMINI_API_KEY`: Server-side API key for Google Gemini model generation, optimization, and assistant features.
+- `SUPABASE_SERVICE_ROLE_KEY` *(Optional / Administrative)*: Required strictly for backend administrative actions (such as complete user account deletion via `supabase.auth.admin.deleteUser`). Never expose to client-side code.
+
+### Database Setup & Migrations
+1. **Base Schema:** Apply `db/schema.sql` via Supabase SQL Editor to provision tables, indexes, triggers, and Row Level Security policies.
+2. **Initial Catalog Seed:** Apply `db/seed.sql` to populate curated global destinations and benchmark activities.
+3. **Catalog Governance & Isolation:** The global catalog (`cities`, `activities`) remains strictly curated and read-only for public and authenticated users. Custom user destinations and activities are saved to private trip tables (`trip_stops`, `itinerary_items`). Historical migration `db/archive/20261021_allow_catalog_insert.sql` is retired and must not be applied.
+
+### Public Sharing vs. Private Trip Architecture
+- **Curated Catalog (`cities`, `activities`):** Publicly discoverable destinations and benchmark activities.
+- **Private Trip Data (`trip_stops`, `itinerary_items`, `expenses`):** Belongs strictly to the authenticated trip owner and protected by RLS. Custom stops and user-created activities stay within the user's private trip.
+- **Public Itinerary Sharing (`/share/[slug]`):** Controlled by `trips.is_public`, `trips.share_slug`, and `shared_trips.is_active`. Read-only anonymous access reveals schedule, stops, and activities, while strictly hiding private budget expenses, personal notes, and account identity.
+
+### Known Limitations & Guidance
+- **Account Deletion:** Per Supabase Auth architecture, permanent user deletion requires administrative API access with service-role permissions. The UI directs users through an authenticated deletion workflow rather than insecure client-side deletion.
+- **Storage Buckets:** User avatars support direct HTTPS image URLs. For direct file uploads, provision a public `avatars` bucket in Supabase Storage with upload policies restricted to `auth.uid() = (storage.foldername(name))[1]`.
+

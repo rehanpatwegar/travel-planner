@@ -300,6 +300,12 @@ export async function POST(request: NextRequest) {
 
     if (insertError) {
       console.error("Failed to insert activity into catalog:", insertError.message);
+      if (insertError.code === "23505" || insertError.message?.toLowerCase().includes("duplicate key")) {
+        return NextResponse.json(
+          { error: `An activity with the title "${title.trim()}" already exists for this destination.` },
+          { status: 409 }
+        );
+      }
       return NextResponse.json(
         { error: `Database insert failed: ${insertError.message}` },
         { status: 500 }

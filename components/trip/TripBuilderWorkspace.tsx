@@ -47,6 +47,7 @@ import { ItineraryOptimizerModal } from "@/components/ai/ItineraryOptimizerModal
 import { TripAssistantDrawer } from "@/components/ai/TripAssistantDrawer";
 import { getCategoryBadgeClass, formatTimeRange } from "./SortableItineraryItem";
 import { formatCurrencyAmount } from "@/lib/utils";
+import { ShareTripModal } from "./ShareTripModal";
 
 interface TripBuilderWorkspaceProps {
   initialTrip: Trip;
@@ -106,6 +107,7 @@ export function TripBuilderWorkspace({
     "saved"
   );
   const [errorNotice, setErrorNotice] = useState<string | null>(null);
+  const [shareModalOpen, setShareModalOpen] = useState(false);
 
   // Modals state
   const [isActivityModalOpen, setIsActivityModalOpen] = useState(false);
@@ -668,6 +670,15 @@ export function TripBuilderWorkspace({
                 Calendar
               </Button>
             </Link>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShareModalOpen(true)}
+              className="text-xs h-8 gap-1.5 text-slate-700 hover:text-blue-600"
+            >
+              <Share2 className="h-3.5 w-3.5 text-blue-600" />
+              Share
+            </Button>
           </div>
         </div>
       </header>
@@ -974,6 +985,15 @@ export function TripBuilderWorkspace({
         isOpen={Boolean(editingItem)}
         onClose={() => setEditingItem(null)}
         onSave={handleEditItem}
+      />
+
+      <ShareTripModal
+        isOpen={shareModalOpen}
+        onClose={() => setShareModalOpen(false)}
+        tripId={trip.id}
+        tripTitle={trip.title}
+        initialIsPublic={trip.is_public}
+        initialShareSlug={trip.share_slug}
       />
     </div>
   );

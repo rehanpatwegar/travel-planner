@@ -181,4 +181,77 @@ export async function PATCH(
   }
 }
 
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params;
+    const supabase = await createClient();
+
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    // Verify trip exists and user is the owner
+    const { data: trip, error: tripError } = await supabase
+      .from("trips")
+      .select("id, user_id, title")
+      .eq("id", id)
+      .maybeSingle();
+
+    if (tripError || !trip) {
+      return NextResponse.json({ error: "Trip not found" }, { status: 404 });
+    }
+
+    if (trip.user_id !== user.id) {
+      return NextResponse.json(
+        { error: "Forbidden: You do not own this trip" },
+        { status: 403 }
+      );
+    }
+
+    // Delete trip (cascades to stops, itinerary items, expenses, and shared_trips)
+    const { error: deleteError } = await supabase
+      .from("trips")
+      .delete()
+      .eq("id", id)
+      .eq("user_id", user.id);
+
+    if (deleteError) {
+      console.error("Failed to delete trip:", deleteError.message);
+      if (deleteError.code === "23503") {
+        return NextResponse.json(
+          {
+            error:
+              "Cannot delete trip: dependent records exist in the database that are protected by foreign key constraints. Verify foreign key CASCADE constraints or apply the transactional deletion RPC.",
+          },
+          { status: 409 }
+        );
+      }
+      return NextResponse.json(
+        { error: `Failed to delete trip: ${deleteError.message}` },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({
+      message: "Trip deleted successfully",
+      id,
+      title: trip.title,
+    });
+  } catch (error) {
+    console.error("Error deleting trip:", error);
+    return NextResponse.json(
+      { error: "Internal server error while deleting trip" },
+      { status: 500 }
+    );
+  }
+}
+
 

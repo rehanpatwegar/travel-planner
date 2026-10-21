@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import {
   ArrowLeft,
   Calendar,
@@ -20,6 +21,8 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { getCategoryBadgeClass, formatTimeRange, formatCurrencyAmount } from "@/lib/utils";
 import { TripAssistantDrawer } from "@/components/ai/TripAssistantDrawer";
+import { TripViewHeaderActions } from "@/components/trip/TripViewHeaderActions";
+
 
 export default async function TripViewPage({
   params,
@@ -106,6 +109,18 @@ export default async function TripViewPage({
       </div>
     );
   }
+
+  // Check user session & permissions
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  const isOwner = !!user && user.id === tripData.user_id;
+
+  if (!isOwner && !tripData.is_public) {
+    redirect(`/login?redirect=/trips/${id}/view`);
+  }
+
 
   // Extract destination stops
   const rawStops = (tripData.stops || tripData.trip_stops || []) as any[];
@@ -240,13 +255,13 @@ export default async function TripViewPage({
                 Itinerary Builder
               </Button>
             </Link>
-            {tripData.share_slug && (
-              <Link href={`/share/${tripData.share_slug}`}>
-                <Button size="sm" variant="outline" className="text-xs h-8 gap-1 text-slate-600">
-                  <Share2 className="h-3.5 w-3.5 text-blue-600" />
-                </Button>
-              </Link>
-            )}
+            <TripViewHeaderActions
+              tripId={id}
+              tripTitle={tripData.title}
+              isPublic={!!tripData.is_public}
+              shareSlug={tripData.share_slug}
+              isOwner={isOwner}
+            />
           </div>
         </div>
       </header>

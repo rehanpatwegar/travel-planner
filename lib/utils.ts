@@ -138,3 +138,21 @@ export function formatCurrencyAmount(
   })}`;
 }
 
+/**
+ * Helper to compute number of days between two YYYY-MM-DD strings inclusive.
+ */
+export function calculateDays(startStr?: string | null, endStr?: string | null): number {
+  if (!startStr || !endStr) return 1;
+  try {
+    const s = new Date(startStr);
+    const e = new Date(endStr);
+    if (isNaN(s.getTime()) || isNaN(e.getTime())) {
+      return 1;
+    }
+    const diff = Math.round((e.getTime() - s.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+    return diff > 0 ? diff : 1;
+  } catch {
+    return 1;
+  }
+}
+

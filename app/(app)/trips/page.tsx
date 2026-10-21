@@ -15,11 +15,15 @@ import {
   AlertCircle,
   Clock,
   Layers,
+  Share2,
+  Trash2,
+  CheckCircle2,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
+import { ShareTripModal } from "@/components/trip/ShareTripModal";
 
 interface TripStop {
   id: string;
@@ -36,6 +40,8 @@ interface Trip {
   total_budget: number;
   currency: string;
   created_at: string;
+  is_public?: boolean;
+  share_slug?: string | null;
   trip_stops?: TripStop[];
 }
 
@@ -46,6 +52,38 @@ export default function TripsPage() {
   const [trips, setTrips] = useState<Trip[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
+
+  // Sharing & Deletion state
+  const [shareModalTrip, setShareModalTrip] = useState<Trip | null>(null);
+  const [deleteModalTrip, setDeleteModalTrip] = useState<Trip | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  async function handleDeleteTrip(tripId: string) {
+    setIsDeleting(true);
+    setErrorMsg(null);
+    setSuccessMsg(null);
+    try {
+      const res = await fetch(`/api/trips/${tripId}`, {
+        method: "DELETE",
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to delete trip");
+      }
+      setTrips((prev) => prev.filter((t) => t.id !== tripId));
+      setSuccessMsg(`"${deleteModalTrip?.title || "Trip"}" deleted successfully.`);
+      setDeleteModalTrip(null);
+      setTimeout(() => setSuccessMsg(null), 4000);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to delete trip";
+      setErrorMsg(msg);
+    } finally {
+      setIsDeleting(false);
+    }
+  }
+
+
 
   async function loadUserTrips() {
     setLoading(true);
@@ -148,6 +186,14 @@ export default function TripsPage() {
             </Button>
           </Link>
         </div>
+
+        {/* Success Alert */}
+        {successMsg && (
+          <div className="mt-6 flex items-start gap-2.5 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-xs text-emerald-800">
+            <CheckCircle2 className="h-4 w-4 shrink-0 mt-0.5 text-emerald-600" />
+            <p>{successMsg}</p>
+          </div>
+        )}
 
         {/* Error State */}
         {errorMsg && (
@@ -266,6 +312,28 @@ export default function TripsPage() {
                         </Button>
                       </Link>
                     </div>
+
+                    {/* Sharing & Management Actions */}
+                    <div className="mt-2.5 pt-2.5 border-t border-slate-100 flex items-center justify-between">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setShareModalTrip(trip)}
+                        className="text-xs text-blue-600 hover:text-blue-700 hover:bg-blue-50 h-7 px-2 gap-1.5"
+                      >
+                        <Share2 className="h-3.5 w-3.5" />
+                        {trip.is_public ? "Manage Share" : "Share Trip"}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setDeleteModalTrip(trip)}
+                        className="text-xs text-rose-600 hover:text-rose-700 hover:bg-rose-50 h-7 px-2 gap-1"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                        Delete
+                      </Button>
+                    </div>
                   </CardContent>
                 </Card>
               );
@@ -273,6 +341,79 @@ export default function TripsPage() {
           </div>
         )}
       </main>
+
+      {/* Share Trip Modal */}
+      {shareModalTrip && (
+        <ShareTripModal
+          isOpen={true}
+          onClose={() => setShareModalTrip(null)}
+          tripId={shareModalTrip.id}
+          tripTitle={shareModalTrip.title}
+          initialIsPublic={shareModalTrip.is_public}
+          initialShareSlug={shareModalTrip.share_slug}
+          onShareStatusChange={(isPub, slug) => {
+            setTrips((prev) =>
+              prev.map((t) =>
+                t.id === shareModalTrip.id
+                  ? { ...t, is_public: isPub, share_slug: slug }
+                  : t
+              )
+            );
+          }}
+        />
+      )}
+
+      {/* Delete Confirmation Dialog */}
+      {deleteModalTrip && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-xs">
+          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-xl animate-in fade-in zoom-in-95">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-rose-50 text-rose-600">
+                <Trash2 className="h-5 w-5" />
+              </div>
+              <div>
+                <h3 className="font-bold text-slate-900 text-base">Delete Trip</h3>
+                <p className="text-xs text-slate-500">This action cannot be undone.</p>
+              </div>
+            </div>
+
+            <p className="mt-4 text-xs text-slate-600 leading-relaxed">
+              Are you sure you want to delete <strong className="text-slate-900 font-semibold">&ldquo;{deleteModalTrip.title}&rdquo;</strong>?
+              All associated itinerary activities, multi-city stops, expenses, and sharing links will be permanently removed.
+            </p>
+
+            <div className="mt-6 flex items-center justify-end gap-2.5">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setDeleteModalTrip(null)}
+                disabled={isDeleting}
+                className="text-xs h-9"
+              >
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => handleDeleteTrip(deleteModalTrip.id)}
+                disabled={isDeleting}
+                className="bg-rose-600 hover:bg-rose-700 text-white text-xs h-9 gap-1.5"
+              >
+                {isDeleting ? (
+                  <>
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    Deleting...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="h-3.5 w-3.5" />
+                    Delete Trip
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
