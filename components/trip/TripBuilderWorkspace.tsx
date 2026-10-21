@@ -37,7 +37,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
-import { Trip, TripStop, ItineraryItem } from "./types";
+import { Trip, TripStop, ItineraryItem, Expense } from "./types";
 import { DroppableDayColumn } from "./DroppableDayColumn";
 import { ActivitySearchModal } from "./ActivitySearchModal";
 import { AddStopModal } from "./AddStopModal";
@@ -45,6 +45,9 @@ import { EditItemModal } from "./EditItemModal";
 import { AISmartSuggestModal } from "./AISmartSuggestModal";
 import { ItineraryOptimizerModal } from "@/components/ai/ItineraryOptimizerModal";
 import { TripAssistantDrawer } from "@/components/ai/TripAssistantDrawer";
+import { TripHealthBadge } from "./TripHealthBadge";
+import { TripHealthModal } from "./TripHealthModal";
+import { computeTripHealth } from "@/lib/scoring/tripHealth";
 import { getCategoryBadgeClass, formatTimeRange } from "./SortableItineraryItem";
 import { formatCurrencyAmount } from "@/lib/utils";
 import { ShareTripModal } from "./ShareTripModal";
@@ -53,17 +56,20 @@ interface TripBuilderWorkspaceProps {
   initialTrip: Trip;
   initialStops: TripStop[];
   initialItems: ItineraryItem[];
+  initialExpenses?: Expense[];
 }
 
 export function TripBuilderWorkspace({
   initialTrip,
   initialStops,
   initialItems,
+  initialExpenses = [],
 }: TripBuilderWorkspaceProps) {
   const [isMounted, setIsMounted] = useState(false);
   const [trip, setTrip] = useState<Trip>(initialTrip);
   const [stops, setStops] = useState<TripStop[]>(initialStops);
   const [items, setItems] = useState<ItineraryItem[]>(initialItems);
+  const [expenses] = useState<Expense[]>(initialExpenses);
 
   // Track the baseline persisted state to avoid re-sending unchanged items
   const persistedItemsRef = useRef<Map<string, { day_number: number; order_index: number }>>(
@@ -113,6 +119,7 @@ export function TripBuilderWorkspace({
   const [isActivityModalOpen, setIsActivityModalOpen] = useState(false);
   const [isAISuggestModalOpen, setIsAISuggestModalOpen] = useState(false);
   const [isOptimizerModalOpen, setIsOptimizerModalOpen] = useState(false);
+  const [isHealthModalOpen, setIsHealthModalOpen] = useState(false);
   const [targetDayForNewActivity, setTargetDayForNewActivity] = useState(1);
   const [isStopModalOpen, setIsStopModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<ItineraryItem | null>(null);
@@ -189,6 +196,16 @@ export function TripBuilderWorkspace({
 
     return { totalPlannedCost: primarySum, otherCurrenciesTotal: otherList };
   }, [items, trip.currency]);
+
+  // Deterministic Trip Health Score (real-time recalculation on any itinerary/budget change)
+  const tripHealth = useMemo(() => {
+    return computeTripHealth({
+      trip,
+      items,
+      stops,
+      expenses,
+    });
+  }, [trip, items, stops, expenses]);
 
   // Calendar date for a day index
   function getDayDate(dayIndex: number): string | null {
@@ -795,7 +812,7 @@ export function TripBuilderWorkspace({
           </div>
 
           {/* Quick Metrics Bar */}
-          <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4 border-t border-slate-100 pt-4 text-xs">
+          <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-5 border-t border-slate-100 pt-4 text-xs items-center">
             <div>
               <span className="text-[11px] text-slate-400 font-medium block">
                 Total Activities
@@ -842,6 +859,14 @@ export function TripBuilderWorkspace({
                 {trip.currency || "USD"}{" "}
                 {(Number(trip.total_budget || 0) - totalPlannedCost).toLocaleString(undefined, { maximumFractionDigits: 0 })}
               </span>
+            </div>
+
+            <div className="col-span-2 sm:col-span-1">
+              <TripHealthBadge
+                health={tripHealth}
+                onClick={() => setIsHealthModalOpen(true)}
+                className="w-full"
+              />
             </div>
           </div>
         </div>
@@ -960,6 +985,15 @@ export function TripBuilderWorkspace({
           setItems(updatedItems);
           setSaveStatus("saved");
         }}
+      />
+
+      <TripHealthModal
+        isOpen={isHealthModalOpen}
+        onClose={() => setIsHealthModalOpen(false)}
+        tripId={trip.id}
+        tripTitle={trip.title}
+        health={tripHealth}
+        onOpenOptimizer={() => setIsOptimizerModalOpen(true)}
       />
 
       <TripAssistantDrawer

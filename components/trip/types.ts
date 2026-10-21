@@ -24,6 +24,8 @@ export interface CityCatalogItem {
   average_daily_cost: number;
   currency: string;
   rating?: number;
+  latitude?: number | null;
+  longitude?: number | null;
 }
 
 export interface TripStop {

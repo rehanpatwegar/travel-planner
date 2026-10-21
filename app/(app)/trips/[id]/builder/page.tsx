@@ -102,11 +102,18 @@ export default async function TripBuilderPage({
     .order("day_number", { ascending: true })
     .order("order_index", { ascending: true });
 
+  // Fetch expenses to ensure accurate budget and double-counting safeguards
+  const { data: expenses } = await supabase
+    .from("expenses")
+    .select("*")
+    .eq("trip_id", id);
+
   return (
     <TripBuilderWorkspace
       initialTrip={trip}
       initialStops={stops || []}
       initialItems={items || []}
+      initialExpenses={expenses || []}
     />
   );
 }
