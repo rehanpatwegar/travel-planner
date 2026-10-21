@@ -40,7 +40,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Trip, TripStop, ItineraryItem } from "./types";
-import { getCategoryBadgeClass, formatTimeRange } from "@/lib/utils";
+import { getCategoryBadgeClass, formatTimeRange, formatCurrencyAmount } from "@/lib/utils";
 
 interface TripCalendarClientProps {
   trip: Trip;
@@ -719,7 +719,7 @@ export function TripCalendarClient({
                             </span>
                             <span className="text-[10px] text-emerald-600 font-bold shrink-0">
                               {Number(item.estimated_cost) > 0
-                                ? `$${Number(item.estimated_cost).toFixed(0)}`
+                                ? formatCurrencyAmount(Number(item.estimated_cost), item.currency || trip.currency)
                                 : "Free"}
                             </span>
                           </div>
@@ -842,7 +842,7 @@ export function TripCalendarClient({
                   </Badge>
                   {selectedEvent.cost > 0 ? (
                     <span className="font-bold text-emerald-600">
-                      ${selectedEvent.cost.toFixed(0)} est.
+                      {formatCurrencyAmount(selectedEvent.cost, trip.currency)} est.
                     </span>
                   ) : (
                     <span className="font-medium text-slate-400">Free</span>

@@ -42,7 +42,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Trip, TripStop, ItineraryItem, Expense } from "./types";
-import { getCategoryBadgeClass } from "@/lib/utils";
+import { getCategoryBadgeClass, getCurrencySymbol, formatCurrencyAmount } from "@/lib/utils";
 
 interface TripBudgetClientProps {
   trip: Trip;
@@ -103,6 +103,7 @@ export function TripBudgetClient({
   const [expenseTitle, setExpenseTitle] = useState("");
   const [expenseAmount, setExpenseAmount] = useState("");
   const [expenseCategory, setExpenseCategory] = useState<string>("Accommodation");
+  const [expenseCurrency, setExpenseCurrency] = useState<string>(trip.currency || "USD");
   const [expenseDate, setExpenseDate] = useState("");
   const [expensePaymentMethod, setExpensePaymentMethod] = useState("");
   const [expenseNotes, setExpenseNotes] = useState("");
@@ -112,44 +113,35 @@ export function TripBudgetClient({
   // Deleting Expense State
   const [deletingExpenseId, setDeletingExpenseId] = useState<string | null>(null);
 
-  const currencySymbol = useMemo(() => {
-    switch (trip.currency) {
-      case "EUR":
-        return "€";
-      case "GBP":
-        return "£";
-      case "JPY":
-        return "¥";
-      case "INR":
-        return "₹";
-      case "CAD":
-      case "AUD":
-      case "USD":
-      default:
-        return "$";
-    }
-  }, [trip.currency]);
+  const primaryCurrency = useMemo(
+    () => (trip.currency || "USD").trim().toUpperCase(),
+    [trip.currency]
+  );
 
-  function formatCurrency(val: number) {
-    return `${currencySymbol}${Number(val || 0).toLocaleString(undefined, {
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 2,
-    })}`;
+  const currencySymbol = useMemo(
+    () => getCurrencySymbol(primaryCurrency),
+    [primaryCurrency]
+  );
+
+  function formatCurrency(val: number, cur?: string) {
+    return formatCurrencyAmount(val, cur || primaryCurrency);
   }
 
   // --- Calculations ---
 
-  // 1. Activity Costs Breakdown
+  // 1. Activity Costs Breakdown (separated by currency)
   const {
     activityTotalCost,
     unknownPriceItemsCount,
     freeItemsCount,
     knownPriceItemsCount,
+    otherActivityCurrencies,
   } = useMemo(() => {
     let total = 0;
     let unknown = 0;
     let free = 0;
     let known = 0;
+    const others: Record<string, number> = {};
 
     items.forEach((item) => {
       const rawCost = item.estimated_cost;
@@ -159,7 +151,13 @@ export function TripBudgetClient({
         free++;
         known++;
       } else {
-        total += Number(rawCost);
+        const costNum = Number(rawCost);
+        const itemCur = (item.currency || primaryCurrency).toUpperCase();
+        if (itemCur === primaryCurrency) {
+          total += costNum;
+        } else {
+          others[itemCur] = (others[itemCur] || 0) + costNum;
+        }
         known++;
       }
     });
@@ -169,15 +167,42 @@ export function TripBudgetClient({
       unknownPriceItemsCount: unknown,
       freeItemsCount: free,
       knownPriceItemsCount: known,
+      otherActivityCurrencies: others,
     };
-  }, [items]);
+  }, [items, primaryCurrency]);
 
-  // 2. Custom Logged Expenses Total
-  const loggedExpensesTotal = useMemo(() => {
-    return expenses.reduce((sum, exp) => sum + (Number(exp.amount) || 0), 0);
-  }, [expenses]);
+  // 2. Custom Logged Expenses Total (separated by currency)
+  const { loggedExpensesTotal, otherExpenseCurrencies } = useMemo(() => {
+    let primarySum = 0;
+    const others: Record<string, number> = {};
 
-  // 3. Combined Estimated Trip Cost
+    expenses.forEach((exp) => {
+      const amount = Number(exp.amount) || 0;
+      if (amount <= 0) return;
+      const expCur = (exp.currency || primaryCurrency).toUpperCase();
+      if (expCur === primaryCurrency) {
+        primarySum += amount;
+      } else {
+        others[expCur] = (others[expCur] || 0) + amount;
+      }
+    });
+
+    return { loggedExpensesTotal: primarySum, otherExpenseCurrencies: others };
+  }, [expenses, primaryCurrency]);
+
+  // Combined secondary currencies summary (never added together without conversion)
+  const otherCurrenciesSummary = useMemo(() => {
+    const combined: Record<string, number> = {};
+    Object.entries(otherActivityCurrencies).forEach(([c, val]) => {
+      combined[c] = (combined[c] || 0) + val;
+    });
+    Object.entries(otherExpenseCurrencies).forEach(([c, val]) => {
+      combined[c] = (combined[c] || 0) + val;
+    });
+    return Object.entries(combined).map(([c, val]) => `${formatCurrencyAmount(val, c)}`);
+  }, [otherActivityCurrencies, otherExpenseCurrencies]);
+
+  // 3. Combined Estimated Trip Cost in Primary Currency
   const totalEstimatedCost = activityTotalCost + loggedExpensesTotal;
 
   // 4. Budget Status
@@ -186,23 +211,42 @@ export function TripBudgetClient({
   const budgetUtilization =
     plannedBudget > 0 ? (totalEstimatedCost / plannedBudget) * 100 : 0;
 
-  // 5. Category Breakdown Data for Recharts
+  // Required cost categories check (Task 5)
+  const hasLodging = useMemo(() => {
+    return (
+      expenses.some((e) => /accommodat|hotel|hostel|resort|lodging/i.test(e.category || "")) ||
+      items.some((i) => /accommodat|hotel|hostel|resort|lodging/i.test(i.category || ""))
+    );
+  }, [expenses, items]);
+
+  const hasTransport = useMemo(() => {
+    return (
+      expenses.some((e) => /transport|transit|flight|train|bus|ferry|taxi|car/i.test(e.category || "")) ||
+      items.some((i) => /transport|transit|flight|train|bus|ferry|taxi|car/i.test(i.category || ""))
+    );
+  }, [expenses, items]);
+
+  const isBudgetAssessmentComplete = hasLodging && hasTransport && unknownPriceItemsCount === 0;
+
+  // 5. Category Breakdown Data for Recharts (Primary Currency Only)
   const categoryData = useMemo(() => {
     const map: Record<string, number> = {};
 
-    // Group itinerary items
+    // Group itinerary items matching primary currency
     items.forEach((item) => {
       const cost = Number(item.estimated_cost);
-      if (!isNaN(cost) && cost > 0) {
+      const itemCur = (item.currency || primaryCurrency).toUpperCase();
+      if (!isNaN(cost) && cost > 0 && itemCur === primaryCurrency) {
         const cat = item.category || "Sightseeing";
         map[cat] = (map[cat] || 0) + cost;
       }
     });
 
-    // Group logged expenses
+    // Group logged expenses matching primary currency
     expenses.forEach((exp) => {
       const cost = Number(exp.amount);
-      if (!isNaN(cost) && cost > 0) {
+      const expCur = (exp.currency || primaryCurrency).toUpperCase();
+      if (!isNaN(cost) && cost > 0 && expCur === primaryCurrency) {
         const cat = exp.category || "Miscellaneous";
         map[cat] = (map[cat] || 0) + cost;
       }
@@ -216,7 +260,7 @@ export function TripBudgetClient({
 
     result.sort((a, b) => b.value - a.value);
     return result;
-  }, [items, expenses]);
+  }, [items, expenses, primaryCurrency]);
 
   // 6. City Breakdown Data for Recharts
   const cityData = useMemo(() => {
@@ -230,7 +274,8 @@ export function TripBudgetClient({
 
     items.forEach((item) => {
       const cost = Number(item.estimated_cost) || 0;
-      if (cost > 0) {
+      const itemCur = (item.currency || primaryCurrency).toUpperCase();
+      if (cost > 0 && itemCur === primaryCurrency) {
         const stop = stops.find((s) => s.id === item.trip_stop_id);
         const cityName =
           stop?.custom_city_name ||
@@ -247,7 +292,7 @@ export function TripBudgetClient({
         estimatedCost: Math.round(value * 100) / 100,
       }))
       .filter((d) => d.estimatedCost > 0);
-  }, [items, stops]);
+  }, [items, stops, primaryCurrency]);
 
   // 7. Days and Daily Burn
   const totalDays = useMemo(() => {
@@ -332,7 +377,7 @@ export function TripBudgetClient({
           title: expenseTitle.trim(),
           amount: num,
           category: expenseCategory,
-          currency: trip.currency || "USD",
+          currency: (expenseCurrency || trip.currency || "USD").trim().toUpperCase(),
           expense_date: expenseDate || null,
           payment_method: expensePaymentMethod.trim() || null,
           notes: expenseNotes.trim() || null,
@@ -543,6 +588,12 @@ export function TripBudgetClient({
               <p className="text-xs text-slate-500 mt-1 truncate">
                 Activities: {formatCurrency(activityTotalCost)} • Logged: {formatCurrency(loggedExpensesTotal)}
               </p>
+              {otherCurrenciesSummary.length > 0 && (
+                <div className="mt-1.5 pt-1.5 border-t border-slate-100 text-[11px] text-amber-800">
+                  <span className="font-semibold">Other Currencies: </span>
+                  {otherCurrenciesSummary.join(", ")}
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -573,7 +624,11 @@ export function TripBudgetClient({
                 {plannedBudget === 0 ? (
                   "Set a budget to see buffer"
                 ) : remainingBudget >= 0 ? (
-                  <span className="text-emerald-700 font-medium">Under target budget</span>
+                  isBudgetAssessmentComplete ? (
+                    <span className="text-emerald-700 font-medium">Under target budget</span>
+                  ) : (
+                    <span className="text-amber-700 font-medium">Preliminary (lodging/transit not logged)</span>
+                  )
                 ) : (
                   <span className="text-rose-700 font-medium">Over target budget</span>
                 )}
@@ -645,6 +700,34 @@ export function TripBudgetClient({
                 Update in Builder
               </Button>
             </Link>
+          </div>
+        )}
+
+        {/* Missing Required Categories Warning Banner (Task 5) */}
+        {!isBudgetAssessmentComplete && (
+          <div className="flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50/80 p-3.5 text-xs text-amber-900">
+            <AlertCircle className="h-4 w-4 shrink-0 text-amber-600 mt-0.5" />
+            <div className="leading-relaxed">
+              <strong className="font-semibold">Preliminary Budget Assessment:</strong> Target budget comparison is incomplete.{" "}
+              {[
+                !hasLodging ? "Accommodation / Lodging expenses" : "",
+                !hasTransport ? "Transportation / Transit" : "",
+                unknownPriceItemsCount > 0 ? `${unknownPriceItemsCount} unpriced activity(ies)` : "",
+              ]
+                .filter(Boolean)
+                .join(" and ")}{" "}
+              are not yet recorded. Do not assume your trip is fully within budget until all required cost categories are accounted for.
+            </div>
+          </div>
+        )}
+
+        {/* Multi-Currency Separation Notice (Task 1) */}
+        {otherCurrenciesSummary.length > 0 && (
+          <div className="flex items-start gap-2.5 rounded-xl border border-blue-200 bg-blue-50/80 p-3.5 text-xs text-blue-900">
+            <Info className="h-4 w-4 shrink-0 text-blue-600 mt-0.5" />
+            <div className="leading-relaxed">
+              <strong className="font-semibold">Multiple Currencies Tracked Separately:</strong> In addition to your primary budget in {primaryCurrency}, you have entries in other currencies ({otherCurrenciesSummary.join(", ")}). To prevent inaccurate estimations, these amounts are tracked separately and not added into {primaryCurrency} without verified exchange rates.
+            </div>
           </div>
         )}
 
@@ -908,7 +991,7 @@ export function TripBudgetClient({
 
                       <div className="flex items-center gap-3 shrink-0">
                         <span className="font-bold text-slate-900 text-sm">
-                          {formatCurrency(Number(expense.amount))}
+                          {formatCurrency(Number(expense.amount), expense.currency)}
                         </span>
                         <Button
                           size="sm"
@@ -979,7 +1062,7 @@ export function TripBudgetClient({
                               </Badge>
                             ) : (
                               <span className="font-bold text-slate-900">
-                                {formatCurrency(Number(cost))}
+                                {formatCurrency(Number(cost), item.currency)}
                               </span>
                             )
                           ) : (
@@ -1116,10 +1199,10 @@ export function TripBudgetClient({
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
+              <div className="grid grid-cols-3 gap-2.5">
+                <div className="col-span-2">
                   <label className="font-semibold text-slate-700 block mb-1">
-                    Amount ({trip.currency || "USD"}) *
+                    Amount *
                   </label>
                   <input
                     type="number"
@@ -1135,20 +1218,35 @@ export function TripBudgetClient({
 
                 <div>
                   <label className="font-semibold text-slate-700 block mb-1">
-                    Category *
+                    Currency *
                   </label>
-                  <select
-                    value={expenseCategory}
-                    onChange={(e) => setExpenseCategory(e.target.value)}
-                    className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-hidden"
-                  >
-                    {EXPENSE_CATEGORIES.map((c) => (
-                      <option key={c} value={c}>
-                        {c}
-                      </option>
-                    ))}
-                  </select>
+                  <input
+                    type="text"
+                    maxLength={3}
+                    value={expenseCurrency}
+                    onChange={(e) => setExpenseCurrency(e.target.value.toUpperCase())}
+                    className="w-full rounded-md border border-slate-300 px-3 py-2 text-xs uppercase font-mono focus:ring-2 focus:ring-emerald-500 focus:outline-hidden"
+                    placeholder="USD"
+                    required
+                  />
                 </div>
+              </div>
+
+              <div>
+                <label className="font-semibold text-slate-700 block mb-1">
+                  Category *
+                </label>
+                <select
+                  value={expenseCategory}
+                  onChange={(e) => setExpenseCategory(e.target.value)}
+                  className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-hidden"
+                >
+                  {EXPENSE_CATEGORIES.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div className="grid grid-cols-2 gap-3">

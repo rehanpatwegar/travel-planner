@@ -44,9 +44,33 @@ export async function POST(
       order_index,
     } = body;
 
-    if (!city_id && (!custom_city_name || !custom_city_name.trim())) {
+    let safeCityId: string | null = null;
+    let finalCityName: string | null = custom_city_name ? custom_city_name.trim() : null;
+
+    if (city_id && typeof city_id === "string") {
+      const isUuid =
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+          city_id.trim()
+        );
+      if (isUuid) {
+        const { data: realCity } = await supabase
+          .from("cities")
+          .select("id, name")
+          .eq("id", city_id.trim())
+          .maybeSingle();
+
+        if (realCity) {
+          safeCityId = realCity.id;
+          if (!finalCityName) {
+            finalCityName = realCity.name;
+          }
+        }
+      }
+    }
+
+    if (!safeCityId && !finalCityName) {
       return NextResponse.json(
-        { error: "City ID or custom city name is required" },
+        { error: "Valid city or custom city name is required" },
         { status: 400 }
       );
     }
@@ -58,8 +82,8 @@ export async function POST(
       .from("trip_stops")
       .insert({
         trip_id: tripId,
-        city_id: city_id || null,
-        custom_city_name: custom_city_name ? custom_city_name.trim() : null,
+        city_id: safeCityId,
+        custom_city_name: finalCityName,
         arrival_date: arrival_date || null,
         departure_date: departure_date || null,
         notes: notes ? notes.trim() : null,

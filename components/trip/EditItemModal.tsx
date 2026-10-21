@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { ItineraryItem } from "./types";
+import { getCurrencySymbol } from "@/lib/utils";
 
 interface EditItemModalProps {
   item: ItineraryItem | null;
@@ -142,7 +143,7 @@ export function EditItemModal({
 
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Estimated Cost ($ USD)
+                Estimated Cost ({getCurrencySymbol(item?.currency)} {item?.currency || "USD"})
               </label>
               <Input
                 type="number"

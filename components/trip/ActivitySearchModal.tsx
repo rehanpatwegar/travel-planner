@@ -19,12 +19,14 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { ActivityCatalogItem } from "./types";
 import { getCategoryBadgeClass } from "./SortableItineraryItem";
+import { formatCurrencyAmount, getCurrencySymbol } from "@/lib/utils";
 
 interface ActivitySearchModalProps {
   isOpen: boolean;
   onClose: () => void;
   dayNumber: number;
   totalDays: number;
+  tripCurrency?: string;
   onSelectActivity: (activityData: {
     title: string;
     description?: string;
@@ -55,6 +57,7 @@ export function ActivitySearchModal({
   onClose,
   dayNumber: initialDay,
   totalDays,
+  tripCurrency,
   onSelectActivity,
 }: ActivitySearchModalProps) {
   const [activeTab, setActiveTab] = useState<"catalog" | "custom">("catalog");
@@ -121,13 +124,17 @@ export function ActivitySearchModal({
     setAddingId(act.id);
     setErrorMsg(null);
     try {
+      const isFallback =
+        act.id.startsWith("fallback-") ||
+        Boolean((act as unknown as { is_fallback?: boolean }).is_fallback);
+
       await onSelectActivity({
         title: act.title,
         description: act.description,
         category: act.category,
         day_number: selectedDay,
         estimated_cost: act.estimated_cost,
-        activity_id: act.id,
+        activity_id: isFallback ? undefined : act.id,
       });
       onClose();
     } catch (err: unknown) {
@@ -342,7 +349,7 @@ export function ActivitySearchModal({
                             <span className="font-semibold text-emerald-600">
                               {act.estimated_cost === 0
                                 ? "Free"
-                                : `$${act.estimated_cost.toFixed(0)}`}
+                                : formatCurrencyAmount(act.estimated_cost, act.currency || tripCurrency)}
                             </span>
                             {act.duration_minutes > 0 && (
                               <span className="flex items-center gap-1">
@@ -414,7 +421,7 @@ export function ActivitySearchModal({
 
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Estimated Cost ($ USD)
+                    Estimated Cost ({getCurrencySymbol(tripCurrency || "USD")})
                   </label>
                   <Input
                     type="number"

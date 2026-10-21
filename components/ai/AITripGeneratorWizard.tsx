@@ -574,24 +574,27 @@ export function AITripGeneratorWizard({ onSwitchToManual }: AITripGeneratorWizar
             <div className="px-6 py-4 bg-white border-b border-slate-100">
               <div className="rounded-lg border border-slate-200/80 bg-slate-50/50 p-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <DollarSign className="h-4 w-4 text-slate-600" />
                     <span className="text-xs font-semibold text-slate-800">
                       Budget Feasibility Assessment
                     </span>
+                    <Badge variant="outline" className="border-amber-300 bg-amber-50 text-amber-800 text-[10px]">
+                      Preliminary (Activities Only)
+                    </Badge>
                     {draft.budgetAssessment.status === "comfortable" && (
                       <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 text-[10px]">
-                        Comfortable Budget
+                        Comfortable Activity Buffer
                       </Badge>
                     )}
                     {draft.budgetAssessment.status === "within_budget" && (
                       <Badge className="bg-blue-100 text-blue-800 border-blue-300 text-[10px]">
-                        Within Planned Limit
+                        Activities Within Budget
                       </Badge>
                     )}
                     {draft.budgetAssessment.status === "exceeds_budget" && (
                       <Badge className="bg-rose-100 text-rose-800 border-rose-300 text-[10px]">
-                        Attention: Exceeds Target
+                        Attention: Activities Exceed Target
                       </Badge>
                     )}
                   </div>
@@ -614,6 +617,13 @@ export function AITripGeneratorWizard({ onSwitchToManual }: AITripGeneratorWizar
                 <p className="mt-2 text-xs text-slate-600 leading-relaxed">
                   {draft.budgetAssessment.advice}
                 </p>
+
+                {draft.budgetAssessment.missingCategories && draft.budgetAssessment.missingCategories.length > 0 && (
+                  <div className="mt-2.5 rounded border border-amber-200/80 bg-amber-50/70 p-2 text-[11px] text-amber-800">
+                    <span className="font-medium">Missing Categories: </span>
+                    {draft.budgetAssessment.missingCategories.join(", ")} are not included in this preliminary estimate. Remember to budget separately for lodging and long-distance travel.
+                  </div>
+                )}
               </div>
 
               {/* Mandatory AI Estimate Disclaimer */}

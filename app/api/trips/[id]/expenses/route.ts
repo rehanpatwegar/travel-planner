@@ -165,7 +165,9 @@ export async function POST(
       title: title.trim(),
       amount: costNum,
       category,
-      currency: currency || trip.currency || "USD",
+      currency: (typeof currency === "string" && currency.trim())
+        ? currency.trim().toUpperCase().slice(0, 3)
+        : trip.currency || "USD",
       expense_date: validDate,
       payment_method: payment_method ? String(payment_method).trim() : null,
       notes: notes ? String(notes).trim() : null,

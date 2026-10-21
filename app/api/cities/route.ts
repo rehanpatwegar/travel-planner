@@ -1,12 +1,13 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
-// Fallback sample data matching db/seed.sql if Supabase is offline or not yet connected
-const FALLBACK_CITIES = [
+// Non-persistable sample preview catalog used only if Supabase cities table is unreachable or empty.
+// Stable non-UUID IDs ensure clients never use fallback identifiers as Supabase foreign keys.
+export const FALLBACK_CITIES = [
   {
-    id: "11111111-1111-1111-1111-111111111101",
+    id: "fallback-paris",
     name: "Paris",
     country: "France",
     country_code: "FRA",
@@ -19,9 +20,10 @@ const FALLBACK_CITIES = [
     currency: "EUR",
     is_popular: true,
     rating: 4.9,
+    is_fallback: true,
   },
   {
-    id: "11111111-1111-1111-1111-111111111102",
+    id: "fallback-lucerne",
     name: "Lucerne",
     country: "Switzerland",
     country_code: "CHE",
@@ -34,9 +36,10 @@ const FALLBACK_CITIES = [
     currency: "CHF",
     is_popular: true,
     rating: 4.85,
+    is_fallback: true,
   },
   {
-    id: "11111111-1111-1111-1111-111111111103",
+    id: "fallback-florence",
     name: "Florence",
     country: "Italy",
     country_code: "ITA",
@@ -49,9 +52,10 @@ const FALLBACK_CITIES = [
     currency: "EUR",
     is_popular: true,
     rating: 4.88,
+    is_fallback: true,
   },
   {
-    id: "11111111-1111-1111-1111-111111111104",
+    id: "fallback-tokyo",
     name: "Tokyo",
     country: "Japan",
     country_code: "JPN",
@@ -64,9 +68,10 @@ const FALLBACK_CITIES = [
     currency: "JPY",
     is_popular: true,
     rating: 4.92,
+    is_fallback: true,
   },
   {
-    id: "11111111-1111-1111-1111-111111111105",
+    id: "fallback-nyc",
     name: "New York City",
     country: "United States",
     country_code: "USA",
@@ -79,9 +84,10 @@ const FALLBACK_CITIES = [
     currency: "USD",
     is_popular: true,
     rating: 4.82,
+    is_fallback: true,
   },
   {
-    id: "11111111-1111-1111-1111-111111111106",
+    id: "fallback-barcelona",
     name: "Barcelona",
     country: "Spain",
     country_code: "ESP",
@@ -94,6 +100,7 @@ const FALLBACK_CITIES = [
     currency: "EUR",
     is_popular: true,
     rating: 4.86,
+    is_fallback: true,
   },
 ];
 
@@ -105,15 +112,119 @@ export async function GET() {
       .select("*")
       .order("name", { ascending: true });
 
-    if (error || !data || data.length === 0) {
-      // If Supabase is not yet populated or credentials are placeholder, return fallback
-      return NextResponse.json(FALLBACK_CITIES, { status: 200 });
+    if (error) {
+      console.warn("Cities catalog query notice (using fallback preview):", error.message);
+      return NextResponse.json(FALLBACK_CITIES, {
+        status: 200,
+        headers: { "Cache-Control": "no-store, no-cache, must-revalidate" },
+      });
     }
 
-    return NextResponse.json(data, { status: 200 });
-  } catch {
-    // If Supabase connection fails, return fallback
-    return NextResponse.json(FALLBACK_CITIES, { status: 200 });
+    if (!data || data.length === 0) {
+      return NextResponse.json(FALLBACK_CITIES, {
+        status: 200,
+        headers: { "Cache-Control": "no-store, no-cache, must-revalidate" },
+      });
+    }
+
+    return NextResponse.json(data, {
+      status: 200,
+      headers: { "Cache-Control": "no-store, no-cache, must-revalidate" },
+    });
+  } catch (err) {
+    console.warn("Cities route error (using fallback preview):", err);
+    return NextResponse.json(FALLBACK_CITIES, {
+      status: 200,
+      headers: { "Cache-Control": "no-store, no-cache, must-revalidate" },
+    });
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return NextResponse.json(
+        { error: "Unauthorized. Please sign in to add catalog cities." },
+        { status: 401 }
+      );
+    }
+
+    const body = await request.json().catch(() => ({}));
+    const {
+      name,
+      country,
+      country_code,
+      region,
+      description,
+      average_daily_cost,
+      currency,
+      image_url,
+      latitude,
+      longitude,
+    } = body;
+
+    if (!name || typeof name !== "string" || !name.trim()) {
+      return NextResponse.json(
+        { error: "City name is required." },
+        { status: 400 }
+      );
+    }
+
+    if (!country || typeof country !== "string" || !country.trim()) {
+      return NextResponse.json(
+        { error: "Country is required." },
+        { status: 400 }
+      );
+    }
+
+    const costNum = Number(average_daily_cost);
+    const safeCost = !isNaN(costNum) && costNum >= 0 ? costNum : 0;
+    const safeCurrency =
+      typeof currency === "string" && currency.trim().length >= 2
+        ? currency.trim().toUpperCase().slice(0, 3)
+        : "USD";
+
+    const { data: newCity, error: insertError } = await supabase
+      .from("cities")
+      .insert({
+        name: name.trim(),
+        country: country.trim(),
+        country_code: country_code ? String(country_code).trim().slice(0, 3) : null,
+        region: region ? String(region).trim() : null,
+        description: description ? String(description).trim() : null,
+        average_daily_cost: safeCost,
+        currency: safeCurrency,
+        image_url: image_url ? String(image_url).trim() : null,
+        latitude: latitude ? Number(latitude) : null,
+        longitude: longitude ? Number(longitude) : null,
+      })
+      .select()
+      .single();
+
+    if (insertError) {
+      console.error("Failed to insert city into catalog:", insertError.message);
+      return NextResponse.json(
+        { error: `Database insert failed: ${insertError.message}` },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json(newCity, {
+      status: 201,
+      headers: { "Cache-Control": "no-store" },
+    });
+  } catch (err) {
+    console.error("Cities POST error:", err);
+    return NextResponse.json(
+      { error: "Internal server error while saving city." },
+      { status: 500 }
+    );
   }
 }
 

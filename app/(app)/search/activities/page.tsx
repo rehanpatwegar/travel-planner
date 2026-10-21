@@ -17,6 +17,8 @@ import {
   X,
   Route,
   Calendar,
+  RefreshCw,
+  Info,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { Input } from "@/components/ui/input";
@@ -70,6 +72,7 @@ function SearchActivitiesContent() {
 
   const [activities, setActivities] = useState<Activity[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCity, setSelectedCity] = useState(cityParam);
   const [selectedCategory, setSelectedCategory] = useState<string>("All");
@@ -91,20 +94,23 @@ function SearchActivitiesContent() {
   // Toast State
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  useEffect(() => {
-    async function loadActivities() {
-      try {
-        const res = await fetch("/api/activities");
-        if (res.ok) {
-          const data = await res.json();
-          setActivities(data);
-        }
-      } catch (err) {
-        console.error("Failed to load activities", err);
-      } finally {
-        setLoading(false);
+  async function loadActivities(showRefreshing = false) {
+    if (showRefreshing) setIsRefreshing(true);
+    try {
+      const res = await fetch("/api/activities", { cache: "no-store" });
+      if (res.ok) {
+        const data = await res.json();
+        setActivities(data);
       }
+    } catch (err) {
+      console.error("Failed to load activities", err);
+    } finally {
+      setLoading(false);
+      setIsRefreshing(false);
     }
+  }
+
+  useEffect(() => {
     loadActivities();
   }, []);
 
@@ -297,27 +303,18 @@ function SearchActivitiesContent() {
       const supabase = createClient();
       let recordInserted = false;
 
-      // 1. If stop selected, insert into stop_activities
-      if (selectedStopId) {
-        const { error: stopActErr } = await supabase
-          .from("stop_activities")
-          .insert({
-            stop_id: selectedStopId,
-            activity_id: selectedActivityForModal.id,
-          });
+      // 1. Insert into itinerary_items (the normalized table for scheduled activities)
+      const isFallbackActivity =
+        selectedActivityForModal.id.startsWith("fallback-") ||
+        Boolean((selectedActivityForModal as unknown as { is_fallback?: boolean }).is_fallback);
+      const safeActivityId = isFallbackActivity ? null : selectedActivityForModal.id;
 
-        if (!stopActErr) {
-          recordInserted = true;
-        }
-      }
-
-      // 2. Insert into itinerary_items (the normalized table for scheduled activities)
       const { error: itemErr } = await supabase
         .from("itinerary_items")
         .insert({
           trip_id: selectedTripId,
           trip_stop_id: selectedStopId || null,
-          activity_id: selectedActivityForModal.id,
+          activity_id: safeActivityId,
           day_number: selectedDay || 1,
           title: selectedActivityForModal.title,
           description: selectedActivityForModal.description || null,
@@ -331,7 +328,7 @@ function SearchActivitiesContent() {
         recordInserted = true;
       }
 
-      // 3. Fallback to API route if direct insert encountered permission issues
+      // 2. Fallback to API route if direct insert encountered permission issues
       if (!recordInserted) {
         const res = await fetch(`/api/trips/${selectedTripId}/items`, {
           method: "POST",
@@ -343,7 +340,7 @@ function SearchActivitiesContent() {
             estimated_cost: selectedActivityForModal.estimated_cost,
             day_number: selectedDay || 1,
             trip_stop_id: selectedStopId || null,
-            activity_id: selectedActivityForModal.id,
+            activity_id: safeActivityId,
           }),
         });
 
@@ -379,8 +376,11 @@ function SearchActivitiesContent() {
     }
     const s = new Date(currentSelectedTrip.start_date);
     const e = new Date(currentSelectedTrip.end_date);
+    if (isNaN(s.getTime()) || isNaN(e.getTime())) {
+      return 5;
+    }
     const diff = Math.round((e.getTime() - s.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-    return Math.max(1, Math.min(diff > 0 ? diff : 5, 30));
+    return diff > 0 ? diff : 1;
   })();
 
   const currentStopsForTrip = selectedTripId ? stopsByTrip[selectedTripId] || [] : [];
@@ -412,6 +412,17 @@ function SearchActivitiesContent() {
           </div>
 
           <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={isRefreshing || loading}
+              onClick={() => loadActivities(true)}
+              className="gap-1.5 text-xs text-slate-600 hover:text-slate-900"
+              title="Refresh activities catalog"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${isRefreshing ? "animate-spin text-indigo-600" : ""}`} />
+              <span className="hidden sm:inline">Refresh</span>
+            </Button>
             <Link href={tripId ? `/search/cities?tripId=${tripId}` : "/search/cities"}>
               <Button variant="outline" size="sm" className="gap-1.5 text-xs">
                 <MapPin className="h-3.5 w-3.5" />
@@ -464,6 +475,11 @@ function SearchActivitiesContent() {
           <p className="mt-2 text-sm text-slate-600">
             Browse top-rated tours, museums, dining experiences, and outdoor adventures by category, cost, and duration.
           </p>
+
+          <div className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-slate-200/80 bg-white/80 px-3 py-1 text-[11px] text-slate-500 shadow-2xs">
+            <Info className="h-3 w-3 text-slate-400 shrink-0" />
+            <span>Curated catalog experiences. Personal activities created within individual trips remain private to those itineraries.</span>
+          </div>
 
           <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center">
             <div className="relative flex-1">

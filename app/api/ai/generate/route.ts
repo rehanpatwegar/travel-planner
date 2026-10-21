@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Default dates if omitted
+    // Validate start and end dates
     const today = new Date();
     const defaultStart = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000)
       .toISOString()
@@ -55,19 +55,47 @@ export async function POST(request: NextRequest) {
       .toISOString()
       .split("T")[0];
 
-    const safeStartDate =
-      startDate && typeof startDate === "string" && !isNaN(Date.parse(startDate))
-        ? startDate
-        : defaultStart;
+    let safeStartDate = defaultStart;
+    let safeEndDate = defaultEnd;
 
-    const safeEndDate =
-      endDate && typeof endDate === "string" && !isNaN(Date.parse(endDate))
-        ? endDate
-        : defaultEnd;
+    if (startDate !== undefined && startDate !== null && startDate !== "") {
+      if (typeof startDate !== "string" || isNaN(Date.parse(startDate))) {
+        return NextResponse.json(
+          { error: "Invalid start date format. Please provide a valid date string (e.g. YYYY-MM-DD)." },
+          { status: 400 }
+        );
+      }
+      safeStartDate = startDate;
+    }
 
-    if (new Date(safeEndDate) < new Date(safeStartDate)) {
+    if (endDate !== undefined && endDate !== null && endDate !== "") {
+      if (typeof endDate !== "string" || isNaN(Date.parse(endDate))) {
+        return NextResponse.json(
+          { error: "Invalid end date format. Please provide a valid date string (e.g. YYYY-MM-DD)." },
+          { status: 400 }
+        );
+      }
+      safeEndDate = endDate;
+    }
+
+    const startObj = new Date(safeStartDate);
+    const endObj = new Date(safeEndDate);
+
+    if (endObj < startObj) {
       return NextResponse.json(
         { error: "End date must be on or after start date." },
+        { status: 400 }
+      );
+    }
+
+    const calculatedDays =
+      Math.round((endObj.getTime() - startObj.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+
+    if (calculatedDays > 60) {
+      return NextResponse.json(
+        {
+          error: `Trip duration of ${calculatedDays} days exceeds the single-prompt AI generation limit (maximum 60 days). Please select 60 days or fewer, or plan longer journeys in segments.`,
+        },
         { status: 400 }
       );
     }

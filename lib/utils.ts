@@ -89,3 +89,52 @@ export function getStopIdForDay(
   return sortedStops[stopIndex]?.id || null;
 }
 
+/**
+ * Returns a clean symbol or prefix for any currency code without falling back to "$" for unmapped foreign currencies.
+ */
+export function getCurrencySymbol(currency?: string | null): string {
+  if (!currency) return "$";
+  const code = currency.trim().toUpperCase();
+  switch (code) {
+    case "EUR":
+      return "€";
+    case "GBP":
+      return "£";
+    case "JPY":
+      return "¥";
+    case "INR":
+      return "₹";
+    case "CAD":
+      return "CA$";
+    case "AUD":
+      return "A$";
+    case "CHF":
+      return "CHF ";
+    case "AED":
+      return "AED ";
+    case "THB":
+      return "฿";
+    case "SGD":
+      return "S$";
+    case "USD":
+      return "$";
+    default:
+      return `${code} `;
+  }
+}
+
+/**
+ * Standardized currency formatting matching the stored currency symbol/code.
+ */
+export function formatCurrencyAmount(
+  amount: number | null | undefined,
+  currency?: string | null
+): string {
+  const num = Number(amount) || 0;
+  const sym = getCurrencySymbol(currency);
+  return `${sym}${num.toLocaleString(undefined, {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  })}`;
+}
+

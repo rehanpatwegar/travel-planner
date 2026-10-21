@@ -84,8 +84,15 @@ export function AddStopModal({
 
     setSubmitting(true);
     try {
+      const isRealCityUuid =
+        selectedCity?.id &&
+        !(selectedCity as any).is_fallback &&
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+          selectedCity.id
+        );
+
       await onAddStop({
-        city_id: selectedCity?.id,
+        city_id: isRealCityUuid ? selectedCity?.id : undefined,
         custom_city_name: cityName,
         arrival_date: arrivalDate || undefined,
         departure_date: departureDate || undefined,

@@ -13,6 +13,8 @@ import {
   Layers,
   CheckCircle2,
   Loader2,
+  RefreshCw,
+  Info,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -39,25 +41,29 @@ function SearchCitiesContent() {
 
   const [cities, setCities] = useState<City[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedRegion, setSelectedRegion] = useState<string>("All");
   const [addingId, setAddingId] = useState<string | null>(null);
   const [addedIds, setAddedIds] = useState<Record<string, boolean>>({});
 
-  useEffect(() => {
-    async function loadCities() {
-      try {
-        const res = await fetch("/api/cities");
-        if (res.ok) {
-          const data = await res.json();
-          setCities(data);
-        }
-      } catch (err) {
-        console.error("Failed to load cities", err);
-      } finally {
-        setLoading(false);
+  async function loadCities(showRefreshing = false) {
+    if (showRefreshing) setIsRefreshing(true);
+    try {
+      const res = await fetch("/api/cities", { cache: "no-store" });
+      if (res.ok) {
+        const data = await res.json();
+        setCities(data);
       }
+    } catch (err) {
+      console.error("Failed to load cities", err);
+    } finally {
+      setLoading(false);
+      setIsRefreshing(false);
     }
+  }
+
+  useEffect(() => {
     loadCities();
   }, []);
 
@@ -77,12 +83,19 @@ function SearchCitiesContent() {
   async function handleAddStopToTrip(city: City) {
     if (!tripId) return;
     setAddingId(city.id);
+    const isRealCityUuid =
+      city.id &&
+      !(city as any).is_fallback &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+        city.id
+      );
+
     try {
       const res = await fetch(`/api/trips/${tripId}/stops`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          city_id: city.id,
+          city_id: isRealCityUuid ? city.id : null,
           custom_city_name: city.name,
         }),
       });
@@ -123,6 +136,17 @@ function SearchCitiesContent() {
           </div>
 
           <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={isRefreshing || loading}
+              onClick={() => loadCities(true)}
+              className="gap-1.5 text-xs text-slate-600 hover:text-slate-900"
+              title="Refresh city catalog"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${isRefreshing ? "animate-spin text-blue-600" : ""}`} />
+              <span className="hidden sm:inline">Refresh</span>
+            </Button>
             <Link href={tripId ? `/search/activities?tripId=${tripId}` : "/search/activities"}>
               <Button variant="outline" size="sm" className="gap-1.5 text-xs">
                 <Layers className="h-3.5 w-3.5" />
@@ -175,6 +199,11 @@ function SearchCitiesContent() {
           <p className="mt-2 text-sm text-slate-600">
             Find iconic cities and hidden gems with accurate daily cost estimates, location insights, and key travel highlights.
           </p>
+
+          <div className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-slate-200/80 bg-white/80 px-3 py-1 text-[11px] text-slate-500 shadow-2xs">
+            <Info className="h-3 w-3 text-slate-400 shrink-0" />
+            <span>Curated catalog destinations. Custom stops added within individual trips remain private to those itineraries.</span>
+          </div>
 
           <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center">
             <div className="relative flex-1">

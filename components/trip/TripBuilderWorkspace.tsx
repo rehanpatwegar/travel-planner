@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import Link from "next/link";
 import {
   DndContext,
@@ -46,6 +46,7 @@ import { AISmartSuggestModal } from "./AISmartSuggestModal";
 import { ItineraryOptimizerModal } from "@/components/ai/ItineraryOptimizerModal";
 import { TripAssistantDrawer } from "@/components/ai/TripAssistantDrawer";
 import { getCategoryBadgeClass, formatTimeRange } from "./SortableItineraryItem";
+import { formatCurrencyAmount } from "@/lib/utils";
 
 interface TripBuilderWorkspaceProps {
   initialTrip: Trip;
@@ -63,6 +64,17 @@ export function TripBuilderWorkspace({
   const [stops, setStops] = useState<TripStop[]>(initialStops);
   const [items, setItems] = useState<ItineraryItem[]>(initialItems);
 
+  // Track the baseline persisted state to avoid re-sending unchanged items
+  const persistedItemsRef = useRef<Map<string, { day_number: number; order_index: number }>>(
+    new Map(initialItems.map((it) => [it.id, { day_number: it.day_number, order_index: it.order_index }]))
+  );
+
+  useEffect(() => {
+    persistedItemsRef.current = new Map(
+      initialItems.map((it) => [it.id, { day_number: it.day_number, order_index: it.order_index }])
+    );
+  }, [initialItems]);
+
   useEffect(() => {
     setIsMounted(true);
 
@@ -70,6 +82,10 @@ export function TripBuilderWorkspace({
       const customEvent = e as CustomEvent;
       if (customEvent.detail?.tripId === trip.id && customEvent.detail?.item) {
         const newItem = customEvent.detail.item;
+        persistedItemsRef.current.set(newItem.id, {
+          day_number: newItem.day_number,
+          order_index: newItem.order_index,
+        });
         setItems((prev) => {
           if (prev.some((i) => i.id === newItem.id)) return prev;
           return [...prev, newItem];
@@ -150,13 +166,27 @@ export function TripBuilderWorkspace({
     return map;
   }, [items, totalDays]);
 
-  // Overall totals
-  const totalPlannedCost = useMemo(() => {
-    return items.reduce(
-      (sum, item) => sum + (Number(item.estimated_cost) || 0),
-      0
-    );
-  }, [items]);
+  // Overall totals separated by currency
+  const { totalPlannedCost, otherCurrenciesTotal } = useMemo(() => {
+    const primaryCurrency = (trip.currency || "USD").toUpperCase();
+    let primarySum = 0;
+    const others: Record<string, number> = {};
+
+    items.forEach((item) => {
+      const cost = Number(item.estimated_cost) || 0;
+      if (cost <= 0) return;
+      const itemCur = (item.currency || primaryCurrency).toUpperCase();
+      if (itemCur === primaryCurrency) {
+        primarySum += cost;
+      } else {
+        others[itemCur] = (others[itemCur] || 0) + cost;
+      }
+    });
+
+    const otherList = Object.entries(others).map(([c, amt]) => `${c} ${amt.toLocaleString()}`);
+
+    return { totalPlannedCost: primarySum, otherCurrenciesTotal: otherList };
+  }, [items, trip.currency]);
 
   // Calendar date for a day index
   function getDayDate(dayIndex: number): string | null {
@@ -180,26 +210,54 @@ export function TripBuilderWorkspace({
    * Batch persist reordered items to Supabase via server API
    */
   async function persistReorder(updatedItems: ItineraryItem[]) {
+    // Only send items that actually changed day_number or order_index
+    const changedItems = updatedItems.filter((item) => {
+      const prev = persistedItemsRef.current.get(item.id);
+      return (
+        !prev ||
+        prev.day_number !== item.day_number ||
+        prev.order_index !== item.order_index
+      );
+    });
+
+    if (changedItems.length === 0) {
+      setSaveStatus("saved");
+      return;
+    }
+
     setSaveStatus("saving");
     setErrorNotice(null);
 
-    const payload = updatedItems.map((item) => ({
-      id: item.id,
-      day_number: item.day_number,
-      order_index: item.order_index,
-    }));
+    // Chunk reorder updates safely in batches of up to 100 items (safely under the 200 API limit)
+    const CHUNK_SIZE = 100;
 
     try {
-      const res = await fetch(`/api/trips/${trip.id}/items`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ items: payload }),
-      });
+      for (let i = 0; i < changedItems.length; i += CHUNK_SIZE) {
+        const chunk = changedItems.slice(i, i + CHUNK_SIZE).map((item) => ({
+          id: item.id,
+          day_number: item.day_number,
+          order_index: item.order_index,
+        }));
 
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || "Failed to persist reordering");
+        const res = await fetch(`/api/trips/${trip.id}/items`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ items: chunk }),
+        });
+
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.error || "Failed to persist reordering");
+        }
       }
+
+      // Synchronize the persisted baseline after successful database commit
+      changedItems.forEach((item) => {
+        persistedItemsRef.current.set(item.id, {
+          day_number: item.day_number,
+          order_index: item.order_index,
+        });
+      });
 
       setSaveStatus("saved");
     } catch (err: unknown) {
@@ -449,6 +507,12 @@ export function TripBuilderWorkspace({
     }
 
     const { item: createdItem } = await res.json();
+    if (createdItem?.id) {
+      persistedItemsRef.current.set(createdItem.id, {
+        day_number: createdItem.day_number,
+        order_index: createdItem.order_index,
+      });
+    }
     setItems((prev) => [...prev, createdItem]);
     setSaveStatus("saved");
   }
@@ -744,7 +808,12 @@ export function TripBuilderWorkspace({
                 Estimated Cost
               </span>
               <span className="font-bold text-emerald-600 text-sm">
-                ${totalPlannedCost.toFixed(0)} {trip.currency || "USD"}
+                {trip.currency || "USD"} {totalPlannedCost.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                {otherCurrenciesTotal.length > 0 && (
+                  <span className="text-[11px] font-normal text-slate-500 block">
+                    + {otherCurrenciesTotal.join(", ")}
+                  </span>
+                )}
               </span>
             </div>
 
@@ -759,8 +828,8 @@ export function TripBuilderWorkspace({
                     : "text-slate-900"
                 }`}
               >
-                ${(Number(trip.total_budget || 0) - totalPlannedCost).toFixed(0)}{" "}
-                {trip.currency || "USD"}
+                {trip.currency || "USD"}{" "}
+                {(Number(trip.total_budget || 0) - totalPlannedCost).toLocaleString(undefined, { maximumFractionDigits: 0 })}
               </span>
             </div>
           </div>
@@ -790,6 +859,7 @@ export function TripBuilderWorkspace({
                   items={dayItems}
                   totalDays={totalDays}
                   assignedStop={assignedStop}
+                  tripCurrency={trip.currency}
                   onAddActivity={(d) => {
                     setTargetDayForNewActivity(d);
                     setIsActivityModalOpen(true);
@@ -834,7 +904,10 @@ export function TripBuilderWorkspace({
                 </div>
                 <span className="text-xs font-bold text-emerald-600">
                   {Number(activeItem.estimated_cost) > 0
-                    ? `$${Number(activeItem.estimated_cost).toFixed(0)}`
+                    ? formatCurrencyAmount(
+                        Number(activeItem.estimated_cost),
+                        activeItem.currency || trip.currency
+                      )
                     : "Free"}
                 </span>
               </div>
@@ -849,6 +922,7 @@ export function TripBuilderWorkspace({
         onClose={() => setIsActivityModalOpen(false)}
         dayNumber={targetDayForNewActivity}
         totalDays={totalDays}
+        tripCurrency={trip.currency}
         onSelectActivity={handleAddActivity}
       />
 

@@ -18,7 +18,7 @@ import { createClient } from "@/lib/supabase/server";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import { getCategoryBadgeClass, formatTimeRange } from "@/lib/utils";
+import { getCategoryBadgeClass, formatTimeRange, formatCurrencyAmount } from "@/lib/utils";
 import { TripAssistantDrawer } from "@/components/ai/TripAssistantDrawer";
 
 export default async function TripViewPage({
@@ -306,14 +306,14 @@ export default async function TripViewPage({
                 Total Budget
               </span>
               <span className="text-xl font-black text-slate-900 block mt-0.5">
-                ${Number(tripData.total_budget || 0).toLocaleString()}{" "}
+                {formatCurrencyAmount(Number(tripData.total_budget || 0), tripData.currency)}{" "}
                 <span className="text-xs font-semibold text-slate-500">
                   {tripData.currency || "USD"}
                 </span>
               </span>
               {totalExpenses > 0 && (
                 <span className="text-[11px] text-slate-500 mt-1 block">
-                  Logged: ${totalExpenses.toLocaleString()}
+                  Logged: {formatCurrencyAmount(totalExpenses, tripData.currency)}
                 </span>
               )}
             </div>
@@ -368,10 +368,18 @@ export default async function TripViewPage({
                 assignedStop?.cities?.name ||
                 null;
 
-              const totalDayCost = dayItems.reduce(
-                (sum, item) => sum + (Number(item.estimated_cost) || 0),
-                0
-              );
+              const dayCurrencyMap: Record<string, number> = {};
+              dayItems.forEach((item: any) => {
+                const cost = Number(item.estimated_cost ?? item.activities?.estimated_cost ?? 0);
+                if (cost > 0) {
+                  const cur = (item.currency || tripData.currency || "USD").toUpperCase();
+                  dayCurrencyMap[cur] = (dayCurrencyMap[cur] || 0) + cost;
+                }
+              });
+              const dayCostEntries = Object.entries(dayCurrencyMap);
+              const dayCostSummary = dayCostEntries.length > 0
+                ? dayCostEntries.map(([cur, amt]) => formatCurrencyAmount(amt, cur)).join(" + ")
+                : null;
 
               return (
                 <div
@@ -407,9 +415,9 @@ export default async function TripViewPage({
                       </span>
                     </div>
 
-                    {totalDayCost > 0 && (
+                    {dayCostSummary && (
                       <span className="text-xs font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100">
-                        ${totalDayCost.toFixed(0)} est.
+                        {dayCostSummary} est.
                       </span>
                     )}
                   </div>
@@ -490,7 +498,9 @@ export default async function TripViewPage({
                             <div className="flex sm:flex-col items-center sm:items-end justify-between sm:justify-center shrink-0 border-t sm:border-t-0 pt-2 sm:pt-0 border-slate-100">
                               {cost !== null && cost !== undefined && (
                                 <span className="text-xs font-bold text-emerald-600">
-                                  {Number(cost) === 0 ? "Free" : `$${Number(cost).toFixed(0)} est.`}
+                                  {Number(cost) === 0
+                                    ? "Free"
+                                    : `${formatCurrencyAmount(Number(cost), item.currency || tripData.currency)} est.`}
                                 </span>
                               )}
                               {durationMins && Number(durationMins) > 0 && (
@@ -540,7 +550,7 @@ export default async function TripViewPage({
                     <span className="text-[10px] text-slate-400">{expense.category}</span>
                   </div>
                   <span className="font-bold text-slate-900">
-                    ${Number(expense.amount).toLocaleString()} {expense.currency || tripData.currency}
+                    {expense.currency || tripData.currency || "USD"} {Number(expense.amount).toLocaleString()}
                   </span>
                 </div>
               ))}

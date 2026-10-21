@@ -25,6 +25,7 @@ interface SortableItineraryItemProps {
   totalDays: number;
   isFirst: boolean;
   isLast: boolean;
+  tripCurrency?: string;
   onMoveUp: (itemId: string) => void;
   onMoveDown: (itemId: string) => void;
   onMoveToDay: (itemId: string, targetDay: number) => void;
@@ -33,7 +34,7 @@ interface SortableItineraryItemProps {
   onToggleComplete?: (item: ItineraryItem) => void;
 }
 
-import { formatTimeRange, getCategoryBadgeClass } from "@/lib/utils";
+import { formatCurrencyAmount, formatTimeRange, getCategoryBadgeClass } from "@/lib/utils";
 export { formatTimeRange, getCategoryBadgeClass };
 
 export function SortableItineraryItem({
@@ -42,6 +43,7 @@ export function SortableItineraryItem({
   totalDays,
   isFirst,
   isLast,
+  tripCurrency,
   onMoveUp,
   onMoveDown,
   onMoveToDay,
@@ -159,7 +161,9 @@ export function SortableItineraryItem({
               cost === 0 ? "text-slate-400" : "text-emerald-600"
             }`}
           >
-            {cost === 0 ? "Free" : `$${cost.toFixed(0)}`}
+            {cost === 0
+              ? "Free"
+              : formatCurrencyAmount(cost, item.currency || tripCurrency || "USD")}
           </span>
         </div>
 

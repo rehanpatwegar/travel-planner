@@ -48,6 +48,8 @@ export interface AITripDraft {
   budgetAssessment: {
     totalEstimatedCost: number;
     status: "within_budget" | "exceeds_budget" | "comfortable";
+    isPreliminary?: boolean;
+    missingCategories?: string[];
     advice: string;
   };
   days: AIGeneratedDay[];
@@ -71,10 +73,13 @@ export function calculateDays(startStr: string, endStr: string): number {
   try {
     const s = new Date(startStr);
     const e = new Date(endStr);
+    if (isNaN(s.getTime()) || isNaN(e.getTime())) {
+      return 1;
+    }
     const diff = Math.round((e.getTime() - s.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-    return diff > 0 && diff <= 30 ? diff : 3;
+    return diff > 0 ? diff : 1;
   } catch {
-    return 3;
+    return 1;
   }
 }
 
@@ -1156,24 +1161,24 @@ export function generateHeuristicTrip(req: AITripRequest): AITripDraft {
     });
   }
 
-  // Budget assessment
+  // Budget assessment (preliminary: activities only, missing lodging & transit)
   const targetBudget = Number(req.totalBudget) || 0;
   let status: "within_budget" | "exceeds_budget" | "comfortable" = "within_budget";
   let advice = "";
 
   if (targetBudget > 0) {
-    if (cumulativeEstCost <= targetBudget * 0.75) {
-      status = "comfortable";
-      advice = `Your planned budget of ${req.currency} ${targetBudget.toLocaleString()} comfortably accommodates estimated activity costs (${req.currency} ${cumulativeEstCost.toLocaleString()}), leaving ample buffer for lodging, transit, and spontaneous dining.`;
-    } else if (cumulativeEstCost <= targetBudget) {
-      status = "within_budget";
-      advice = `Estimated activity expenses (${req.currency} ${cumulativeEstCost.toLocaleString()}) fit within your ${req.currency} ${targetBudget.toLocaleString()} limit. Keep accommodation and transport in mind.`;
-    } else {
+    if (cumulativeEstCost > targetBudget) {
       status = "exceeds_budget";
-      advice = `Estimated activity fees (${req.currency} ${cumulativeEstCost.toLocaleString()}) exceed your target budget of ${req.currency} ${targetBudget.toLocaleString()}. Consider selecting free walking tours and public parks to optimize costs.`;
+      advice = `Preliminary Activity Assessment: Estimated activity fees (${req.currency} ${cumulativeEstCost.toLocaleString()}) exceed your target budget of ${req.currency} ${targetBudget.toLocaleString()} before adding lodging or transit. Consider choosing free attractions or lowering activity costs.`;
+    } else if (cumulativeEstCost <= targetBudget * 0.4) {
+      status = "comfortable";
+      advice = `Preliminary Activity Assessment: Estimated activity expenses (${req.currency} ${cumulativeEstCost.toLocaleString()}) account for ${Math.round((cumulativeEstCost / targetBudget) * 100)}% of your planned ${req.currency} ${targetBudget.toLocaleString()} budget, leaving ample room for accommodation and transit. Note: Major categories like lodging and long-distance transport are not included in this estimate.`;
+    } else {
+      status = "within_budget";
+      advice = `Preliminary Activity Assessment: Estimated activity expenses (${req.currency} ${cumulativeEstCost.toLocaleString()}) fit within your ${req.currency} ${targetBudget.toLocaleString()} budget. Warning: Lodging and transit are NOT included in this calculation and may exceed your total budget once added.`;
     }
   } else {
-    advice = `Total estimated activity cost across ${totalDays} days is approximately ${req.currency} ${cumulativeEstCost.toLocaleString()} for ${req.travelersCount} traveler(s). Set a planned budget in the dashboard anytime.`;
+    advice = `Preliminary Activity Assessment: Total estimated activity cost across ${totalDays} days is approximately ${req.currency} ${cumulativeEstCost.toLocaleString()} for ${req.travelersCount} traveler(s). Note: Accommodation and transit are not included.`;
   }
 
   const primaryDest = destinations[0] || "World";
@@ -1195,6 +1200,8 @@ export function generateHeuristicTrip(req: AITripRequest): AITripDraft {
     budgetAssessment: {
       totalEstimatedCost: cumulativeEstCost,
       status,
+      isPreliminary: true,
+      missingCategories: ["Accommodation / Lodging", "Flights / Long-distance Transit"],
       advice,
     },
     days,
@@ -1338,32 +1345,134 @@ Return ONLY a valid JSON object matching this schema:
         throw new Error("Invalid structure: missing days array");
       }
 
-      // Sanitize days and activities
-      const sanitizedDays: AIGeneratedDay[] = parsed.days.map((d: any, index: number) => {
-        const dayNum = Number(d.dayNumber) || index + 1;
-        const activities: AIGeneratedActivity[] = (d.activities || []).map((act: any) => ({
-          title: String(act.title || "Curated Attraction").trim(),
-          description: String(act.description || "").trim(),
-          category: VALID_CATEGORIES.includes(act.category) ? act.category : "Sightseeing",
-          startTime: String(act.startTime || "10:00").slice(0, 5),
-          endTime: String(act.endTime || "12:00").slice(0, 5),
-          durationMinutes: Number(act.durationMinutes) || 90,
-          estimatedCost: Math.max(0, Number(act.estimatedCost) || 0),
-          isEstimated: true,
-          recommendationReason: String(
-            act.recommendationReason ||
-              "Matched with your trip interests (planning estimate; not a verified price)."
-          ),
-        }));
+      // Group and normalize Gemini days to ensure valid 1..totalDays day sequence
+      const rawDays: any[] = parsed.days;
+      const daysByNumber = new Map<number, any>();
 
-        return {
-          dayNumber: dayNum,
-          date: addDaysToDate(req.startDate, dayNum - 1),
-          cityName: String(d.cityName || req.destination).trim(),
-          theme: String(d.theme || `Day ${dayNum} Exploration`).trim(),
-          activities,
-        };
-      });
+      // First pass: index by explicit dayNumber if valid (1..totalDays)
+      for (const d of rawDays) {
+        if (!d || typeof d !== "object") continue;
+        const parsedNum = parseInt(String(d.dayNumber || "").replace(/\D/g, ""), 10);
+        if (Number.isInteger(parsedNum) && parsedNum >= 1 && parsedNum <= totalDays) {
+          if (!daysByNumber.has(parsedNum)) {
+            daysByNumber.set(parsedNum, d);
+          }
+        }
+      }
+
+      // Second pass: fill unassigned slot positions from remaining raw days
+      let unassignedIdx = 0;
+      for (let d = 1; d <= totalDays; d++) {
+        if (!daysByNumber.has(d)) {
+          while (unassignedIdx < rawDays.length) {
+            const candidate = rawDays[unassignedIdx++];
+            if (candidate && typeof candidate === "object") {
+              const candidateNum = parseInt(String(candidate.dayNumber || "").replace(/\D/g, ""), 10);
+              // If candidate was already placed at its matching day, skip
+              if (Number.isInteger(candidateNum) && daysByNumber.get(candidateNum) === candidate) {
+                continue;
+              }
+              daysByNumber.set(d, candidate);
+              break;
+            }
+          }
+        }
+      }
+
+      // Check if Gemini provided at least half of the required days; if not, fail over safely to heuristic
+      const minRequiredDays = totalDays <= 2 ? 1 : Math.ceil(totalDays / 2);
+      if (daysByNumber.size < minRequiredDays) {
+        throw new Error(
+          `Gemini provided only ${daysByNumber.size} / ${totalDays} valid days. Failing over to heuristic planner.`
+        );
+      }
+
+      // Prepare destination template fallback pool for filling any missing days or empty activity lists
+      const rawDestList = req.destination
+        .split(/[,&+]|\band\b/i)
+        .map((s) => s.trim())
+        .filter(Boolean);
+      const destinationsList =
+        Array.isArray(parsed.destinations) && parsed.destinations.length > 0
+          ? parsed.destinations
+          : rawDestList.length > 0
+          ? rawDestList
+          : [req.destination];
+
+      const interests = req.interests.length > 0 ? req.interests : ["Sightseeing", "Food & Dining"];
+      const activitiesPerDay =
+        req.pace === "relaxed" ? 2 : req.pace === "fast-paced" ? 4 : 3;
+
+      // Construct exactly totalDays (1..totalDays)
+      const sanitizedDays: AIGeneratedDay[] = [];
+
+      for (let d = 1; d <= totalDays; d++) {
+        const destIndex = Math.min(
+          Math.floor(((d - 1) / totalDays) * destinationsList.length),
+          destinationsList.length - 1
+        );
+        const defaultCity = destinationsList[destIndex] || req.destination;
+        const geminiDay = daysByNumber.get(d);
+        const dayCity = String(geminiDay?.cityName || defaultCity).trim();
+
+        let dayActivities: AIGeneratedActivity[] = [];
+
+        if (geminiDay && Array.isArray(geminiDay.activities) && geminiDay.activities.length > 0) {
+          dayActivities = geminiDay.activities.map((act: any) => ({
+            title: String(act.title || "Curated Attraction").trim(),
+            description: String(act.description || "").trim(),
+            category: VALID_CATEGORIES.includes(act.category) ? act.category : "Sightseeing",
+            startTime: String(act.startTime || "10:00").slice(0, 5),
+            endTime: String(act.endTime || "12:00").slice(0, 5),
+            durationMinutes: Number(act.durationMinutes) || 90,
+            estimatedCost: Math.max(0, Number(act.estimatedCost) || 0),
+            isEstimated: true,
+            recommendationReason: String(
+              act.recommendationReason ||
+                "Matched with your trip interests (planning estimate; not a verified price)."
+            ),
+          }));
+        }
+
+        // If Gemini had no activities for this day or day was missing, fill with destination template
+        if (dayActivities.length === 0) {
+          const { templates, defaultTemplates } = getDestinationTemplates(req.destination, dayCity);
+          const timeSlots = [
+            { start: "09:30", end: "11:30" },
+            { start: "12:00", end: "14:00" },
+            { start: "14:30", end: "17:00" },
+            { start: "18:30", end: "20:30" },
+          ];
+
+          for (let a = 0; a < activitiesPerDay; a++) {
+            const interestCategory = interests[(d + a) % interests.length];
+            const categoryPool = templates[interestCategory] || defaultTemplates;
+            const picked = categoryPool[(d + a) % categoryPool.length];
+            const slot = timeSlots[a] || { start: "15:00", end: "17:00" };
+            const estCost = (picked.cost || 0) * Math.max(1, req.travelersCount);
+
+            dayActivities.push({
+              title: `${picked.title} in ${dayCity}`,
+              description: picked.desc,
+              category: interestCategory || "Sightseeing",
+              startTime: slot.start,
+              endTime: slot.end,
+              durationMinutes: picked.mins || 90,
+              estimatedCost: estCost,
+              isEstimated: true,
+              recommendationReason: `Planning estimate matching your interest in ${interestCategory} (indicative estimate; not a guaranteed price).`,
+            });
+          }
+        }
+
+        sanitizedDays.push({
+          dayNumber: d,
+          date: addDaysToDate(req.startDate, d - 1),
+          cityName: dayCity,
+          theme: String(geminiDay?.theme || `Day ${d} Exploration`).trim(),
+          activities: dayActivities,
+        });
+      }
 
       const totalEstCost = sanitizedDays.reduce(
         (sum, day) =>
@@ -1372,9 +1481,27 @@ Return ONLY a valid JSON object matching this schema:
         0
       );
 
-      const destinationsList = Array.isArray(parsed.destinations) && parsed.destinations.length > 0
-        ? parsed.destinations
-        : [req.destination];
+      // Budget assessment (qualifying activity costs as preliminary)
+      const targetBudget = Number(req.totalBudget) || 0;
+      let status: "within_budget" | "exceeds_budget" | "comfortable" = "within_budget";
+      if (targetBudget > 0) {
+        if (totalEstCost > targetBudget) {
+          status = "exceeds_budget";
+        } else if (totalEstCost <= targetBudget * 0.4) {
+          status = "comfortable";
+        } else {
+          status = "within_budget";
+        }
+      }
+
+      const rawAdvice = String(parsed.budgetAssessment?.advice || "").trim();
+      const preliminaryNote =
+        "Preliminary Activity Assessment: Major categories like lodging and transit are not included in this estimate and must be budgeted separately.";
+      const advice = rawAdvice
+        ? rawAdvice.toLowerCase().includes("lodging") || rawAdvice.toLowerCase().includes("preliminary")
+          ? rawAdvice
+          : `${rawAdvice} (${preliminaryNote})`
+        : `${preliminaryNote} Estimated activity expenses total ${req.currency} ${totalEstCost.toLocaleString()}.`;
 
       return {
         tripTitle: String(parsed.tripTitle || `${req.destination} Adventure`).trim(),
@@ -1383,20 +1510,14 @@ Return ONLY a valid JSON object matching this schema:
         startDate: req.startDate,
         endDate: req.endDate,
         totalDays,
-        targetBudget: Number(req.totalBudget) || 0,
+        targetBudget,
         currency: req.currency || "USD",
         budgetAssessment: {
           totalEstimatedCost: totalEstCost,
-          status:
-            parsed.budgetAssessment?.status === "exceeds_budget"
-              ? "exceeds_budget"
-              : parsed.budgetAssessment?.status === "comfortable"
-              ? "comfortable"
-              : "within_budget",
-          advice: String(
-            parsed.budgetAssessment?.advice ||
-              `Estimated activity cost is ${req.currency} ${totalEstCost.toLocaleString()}.`
-          ),
+          status,
+          isPreliminary: true,
+          missingCategories: ["Accommodation / Lodging", "Flights / Long-distance Transit"],
+          advice,
         },
         days: sanitizedDays,
         disclaimer:

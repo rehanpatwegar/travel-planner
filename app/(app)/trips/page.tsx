@@ -233,7 +233,7 @@ export default function TripsPage() {
                       <span>
                         Budget:{" "}
                         <strong className="text-slate-900 font-semibold">
-                          ${trip.total_budget.toLocaleString()} {trip.currency}
+                          {trip.currency} {trip.total_budget.toLocaleString()}
                         </strong>
                       </span>
                       {trip.description && (

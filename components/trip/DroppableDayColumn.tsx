@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import { useDroppable } from "@dnd-kit/core";
 import {
   SortableContext,
@@ -11,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardHeader, CardContent } from "@/components/ui/card";
 import { ItineraryItem, TripStop } from "./types";
 import { SortableItineraryItem } from "./SortableItineraryItem";
+import { formatCurrencyAmount } from "@/lib/utils";
 
 interface DroppableDayColumnProps {
   dayNumber: number;
@@ -18,6 +20,7 @@ interface DroppableDayColumnProps {
   items: ItineraryItem[];
   totalDays: number;
   assignedStop?: TripStop | null;
+  tripCurrency?: string;
   onAddActivity: (dayNumber: number) => void;
   onMoveUp: (itemId: string) => void;
   onMoveDown: (itemId: string) => void;
@@ -33,6 +36,7 @@ export function DroppableDayColumn({
   items,
   totalDays,
   assignedStop,
+  tripCurrency,
   onAddActivity,
   onMoveUp,
   onMoveDown,
@@ -46,10 +50,21 @@ export function DroppableDayColumn({
     id: containerId,
   });
 
-  const totalDayCost = items.reduce(
-    (sum, item) => sum + (Number(item.estimated_cost) || 0),
-    0
-  );
+  const dayCostSummary = useMemo(() => {
+    const sums: Record<string, number> = {};
+    items.forEach((item) => {
+      const cost = Number(item.estimated_cost) || 0;
+      if (cost > 0) {
+        const cur = (item.currency || tripCurrency || "USD").toUpperCase();
+        sums[cur] = (sums[cur] || 0) + cost;
+      }
+    });
+    const entries = Object.entries(sums);
+    if (entries.length === 0) return null;
+    return entries
+      .map(([cur, amt]) => formatCurrencyAmount(amt, cur))
+      .join(" + ");
+  }, [items, tripCurrency]);
 
   const stopTitle =
     assignedStop?.custom_city_name ||
@@ -93,9 +108,9 @@ export function DroppableDayColumn({
             • {items.length} {items.length === 1 ? "activity" : "activities"}
           </span>
 
-          {totalDayCost > 0 && (
+          {dayCostSummary && (
             <span className="text-[11px] font-semibold text-emerald-600 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-100">
-              ${totalDayCost.toFixed(0)} est.
+              {dayCostSummary} est.
             </span>
           )}
         </div>
@@ -141,6 +156,7 @@ export function DroppableDayColumn({
                   item={item}
                   dayNumber={dayNumber}
                   totalDays={totalDays}
+                  tripCurrency={tripCurrency}
                   isFirst={index === 0}
                   isLast={index === items.length - 1}
                   onMoveUp={onMoveUp}
