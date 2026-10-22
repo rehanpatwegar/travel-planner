@@ -4,6 +4,8 @@
  * with safe heuristic planning fallback if GEMINI_API_KEY is not configured or unavailable.
  */
 
+import { estimateTripBenchmarkBudget } from "@/lib/budget/budgetEngine";
+
 export interface AITripRequest {
   destination: string;
   startDate: string;
@@ -51,6 +53,14 @@ export interface AITripDraft {
     isPreliminary?: boolean;
     missingCategories?: string[];
     advice: string;
+    breakdown?: {
+      accommodation: number;
+      food: number;
+      transport: number;
+      activities: number;
+      contingencyBuffer: number;
+    };
+    assumptions?: string[];
   };
   days: AIGeneratedDay[];
   disclaimer: string;
@@ -1104,8 +1114,25 @@ export function generateHeuristicTrip(req: AITripRequest): AITripDraft {
 
   const interests = req.interests.length > 0 ? req.interests : ["Sightseeing", "Food & Dining"];
 
+  // Calculate comprehensive, destination-aware 5-pillar benchmark budget calibrated to user budget
+  const benchmark = estimateTripBenchmarkBudget({
+    destination: req.destination,
+    startDate: req.startDate,
+    endDate: req.endDate,
+    totalDays,
+    travelersCount: req.travelersCount,
+    currency: req.currency,
+    pace: req.pace,
+    destinationsCount: destinations.length,
+    userBudget: req.totalBudget,
+  });
+
+  // Scaling factor for activity templates based on benchmark activity cost in target currency
+  const activityCostUnit = Math.max(1, Math.round(benchmark.breakdown.activities.dailyRatePerPerson / 3));
+
   const days: AIGeneratedDay[] = [];
-  let cumulativeEstCost = 0;
+  const visitedCities = new Set<string>();
+  let prevCity = "";
 
   for (let d = 1; d <= totalDays; d++) {
     // Distribute destination stops evenly across days
@@ -1118,6 +1145,52 @@ export function generateHeuristicTrip(req: AITripRequest): AITripDraft {
     const { templates, defaultTemplates } = getDestinationTemplates(req.destination, currentCity);
 
     const dayActivities: AIGeneratedActivity[] = [];
+
+    // 1. Accommodation Check-in Item: On Day 1 of each new destination city
+    if (!visitedCities.has(currentCity.toLowerCase())) {
+      visitedCities.add(currentCity.toLowerCase());
+      // Estimate nights in this city
+      const cityNights = destinations.length > 1
+        ? Math.max(1, Math.round(benchmark.nightsCount / destinations.length))
+        : benchmark.nightsCount;
+      const lodgingCost = Math.round(
+        cityNights * benchmark.roomsCount * benchmark.breakdown.accommodation.nightlyRate
+      );
+
+      dayActivities.push({
+        title: `Hotel Check-in & Accommodation in ${currentCity}`,
+        description: `Lodging reservation for ${cityNights} night(s) in ${currentCity} (${benchmark.roomsCount} room(s))`,
+        category: "Accommodation",
+        startTime: "14:00",
+        endTime: "15:00",
+        durationMinutes: 60,
+        estimatedCost: lodgingCost,
+        isEstimated: true,
+        recommendationReason: `Estimated lodging for ${cityNights} night(s) in ${currentCity} (${benchmark.roomsCount} room(s) @ ~${benchmark.primaryCurrency} ${benchmark.breakdown.accommodation.nightlyRate.toLocaleString()}/night).`,
+      });
+    }
+
+    // 2. Intercity Transit Item: When moving to a new city on subsequent days
+    if (d > 1 && prevCity && prevCity.toLowerCase() !== currentCity.toLowerCase()) {
+      const perLegCost = Math.round(
+        req.travelersCount *
+          (benchmark.breakdown.transport.intercityTransit / Math.max(1, destinations.length - 1))
+      );
+      dayActivities.unshift({
+        title: `Intercity Transit: ${prevCity} to ${currentCity}`,
+        description: `Scheduled rail or transport transfer from ${prevCity} to ${currentCity}`,
+        category: "Transport",
+        startTime: "08:30",
+        endTime: "11:00",
+        durationMinutes: 150,
+        estimatedCost: perLegCost,
+        isEstimated: true,
+        recommendationReason: `Estimated intercity transport transfer between ${prevCity} and ${currentCity} for ${req.travelersCount} traveler(s).`,
+      });
+    }
+
+    prevCity = currentCity;
+
     const timeSlots = [
       { start: "09:30", end: "11:30" },
       { start: "12:00", end: "14:00" },
@@ -1131,8 +1204,12 @@ export function generateHeuristicTrip(req: AITripRequest): AITripDraft {
       const picked = categoryPool[(d + a) % categoryPool.length];
       const slot = timeSlots[a] || { start: "15:00", end: "17:00" };
 
-      const estCost = (picked.cost || 0) * Math.max(1, req.travelersCount);
-      cumulativeEstCost += estCost;
+      // Scaled per-person cost accounting for traveler count and target currency
+      const baseCost = picked.cost || 0;
+      const scaledCostPerPerson = baseCost > 0
+        ? Math.round(baseCost * (activityCostUnit / 20))
+        : 0;
+      const estCost = scaledCostPerPerson * Math.max(1, req.travelersCount);
 
       dayActivities.push({
         title: `${picked.title} in ${currentCity}`,
@@ -1161,26 +1238,8 @@ export function generateHeuristicTrip(req: AITripRequest): AITripDraft {
     });
   }
 
-  // Budget assessment (preliminary: activities only, missing lodging & transit)
+  // Budget assessment based on the comprehensive 5-pillar benchmark
   const targetBudget = Number(req.totalBudget) || 0;
-  let status: "within_budget" | "exceeds_budget" | "comfortable" = "within_budget";
-  let advice = "";
-
-  if (targetBudget > 0) {
-    if (cumulativeEstCost > targetBudget) {
-      status = "exceeds_budget";
-      advice = `Preliminary Activity Assessment: Estimated activity fees (${req.currency} ${cumulativeEstCost.toLocaleString()}) exceed your target budget of ${req.currency} ${targetBudget.toLocaleString()} before adding lodging or transit. Consider choosing free attractions or lowering activity costs.`;
-    } else if (cumulativeEstCost <= targetBudget * 0.4) {
-      status = "comfortable";
-      advice = `Preliminary Activity Assessment: Estimated activity expenses (${req.currency} ${cumulativeEstCost.toLocaleString()}) account for ${Math.round((cumulativeEstCost / targetBudget) * 100)}% of your planned ${req.currency} ${targetBudget.toLocaleString()} budget, leaving ample room for accommodation and transit. Note: Major categories like lodging and long-distance transport are not included in this estimate.`;
-    } else {
-      status = "within_budget";
-      advice = `Preliminary Activity Assessment: Estimated activity expenses (${req.currency} ${cumulativeEstCost.toLocaleString()}) fit within your ${req.currency} ${targetBudget.toLocaleString()} budget. Warning: Lodging and transit are NOT included in this calculation and may exceed your total budget once added.`;
-    }
-  } else {
-    advice = `Preliminary Activity Assessment: Total estimated activity cost across ${totalDays} days is approximately ${req.currency} ${cumulativeEstCost.toLocaleString()} for ${req.travelersCount} traveler(s). Note: Accommodation and transit are not included.`;
-  }
-
   const primaryDest = destinations[0] || "World";
   const title = `${primaryDest} Discovery: ${totalDays}-Day Journey`;
 
@@ -1198,11 +1257,19 @@ export function generateHeuristicTrip(req: AITripRequest): AITripDraft {
     targetBudget,
     currency: req.currency || "USD",
     budgetAssessment: {
-      totalEstimatedCost: cumulativeEstCost,
-      status,
-      isPreliminary: true,
-      missingCategories: ["Accommodation / Lodging", "Flights / Long-distance Transit"],
-      advice,
+      totalEstimatedCost: benchmark.totalEstimatedCost,
+      status: benchmark.status,
+      isPreliminary: false,
+      missingCategories: [],
+      advice: benchmark.advice,
+      breakdown: {
+        accommodation: benchmark.breakdown.accommodation.total,
+        food: benchmark.breakdown.food.total,
+        transport: benchmark.breakdown.transport.total,
+        activities: benchmark.breakdown.activities.total,
+        contingencyBuffer: benchmark.breakdown.contingencyBuffer.total,
+      },
+      assumptions: benchmark.assumptions,
     },
     days,
     disclaimer:
@@ -1474,34 +1541,47 @@ Return ONLY a valid JSON object matching this schema:
         });
       }
 
-      const totalEstCost = sanitizedDays.reduce(
-        (sum, day) =>
-          sum +
-          day.activities.reduce((dSum, act) => dSum + (Number(act.estimatedCost) || 0), 0),
-        0
+      // Compute comprehensive 5-pillar benchmark calibrated to user budget
+      const benchmark = estimateTripBenchmarkBudget({
+        destination: req.destination,
+        startDate: req.startDate,
+        endDate: req.endDate,
+        totalDays,
+        travelersCount: req.travelersCount,
+        currency: req.currency,
+        pace: req.pace,
+        destinationsCount: destinationsList.length,
+        userBudget: req.totalBudget,
+      });
+
+      // Ensure Day 1 of each destination has accommodation if Gemini omitted lodging
+      const hasAccommodation = sanitizedDays.some((d) =>
+        d.activities.some(
+          (a) =>
+            /accommodat|hotel|hostel|lodging|resort/i.test(a.category || "") ||
+            /accommodat|hotel|hostel|lodging|check-in/i.test(a.title)
+        )
       );
 
-      // Budget assessment (qualifying activity costs as preliminary)
-      const targetBudget = Number(req.totalBudget) || 0;
-      let status: "within_budget" | "exceeds_budget" | "comfortable" = "within_budget";
-      if (targetBudget > 0) {
-        if (totalEstCost > targetBudget) {
-          status = "exceeds_budget";
-        } else if (totalEstCost <= targetBudget * 0.4) {
-          status = "comfortable";
-        } else {
-          status = "within_budget";
-        }
+      if (!hasAccommodation && sanitizedDays.length > 0) {
+        const firstCity = destinationsList[0] || req.destination;
+        const lodgingCost = Math.round(
+          benchmark.nightsCount * benchmark.roomsCount * benchmark.breakdown.accommodation.nightlyRate
+        );
+        sanitizedDays[0].activities.unshift({
+          title: `Hotel Check-in & Accommodation in ${firstCity}`,
+          description: `Lodging reservation for ${benchmark.nightsCount} night(s) in ${firstCity} (${benchmark.roomsCount} room(s))`,
+          category: "Accommodation",
+          startTime: "14:00",
+          endTime: "15:00",
+          durationMinutes: 60,
+          estimatedCost: lodgingCost,
+          isEstimated: true,
+          recommendationReason: `Estimated lodging for ${benchmark.nightsCount} night(s) in ${firstCity} (${benchmark.roomsCount} room(s) @ ~${benchmark.primaryCurrency} ${benchmark.breakdown.accommodation.nightlyRate.toLocaleString()}/night).`,
+        });
       }
 
-      const rawAdvice = String(parsed.budgetAssessment?.advice || "").trim();
-      const preliminaryNote =
-        "Preliminary Activity Assessment: Major categories like lodging and transit are not included in this estimate and must be budgeted separately.";
-      const advice = rawAdvice
-        ? rawAdvice.toLowerCase().includes("lodging") || rawAdvice.toLowerCase().includes("preliminary")
-          ? rawAdvice
-          : `${rawAdvice} (${preliminaryNote})`
-        : `${preliminaryNote} Estimated activity expenses total ${req.currency} ${totalEstCost.toLocaleString()}.`;
+      const targetBudget = Number(req.totalBudget) || 0;
 
       return {
         tripTitle: String(parsed.tripTitle || `${req.destination} Adventure`).trim(),
@@ -1513,11 +1593,19 @@ Return ONLY a valid JSON object matching this schema:
         targetBudget,
         currency: req.currency || "USD",
         budgetAssessment: {
-          totalEstimatedCost: totalEstCost,
-          status,
-          isPreliminary: true,
-          missingCategories: ["Accommodation / Lodging", "Flights / Long-distance Transit"],
-          advice,
+          totalEstimatedCost: benchmark.totalEstimatedCost,
+          status: benchmark.status,
+          isPreliminary: false,
+          missingCategories: [],
+          advice: benchmark.advice,
+          breakdown: {
+            accommodation: benchmark.breakdown.accommodation.total,
+            food: benchmark.breakdown.food.total,
+            transport: benchmark.breakdown.transport.total,
+            activities: benchmark.breakdown.activities.total,
+            contingencyBuffer: benchmark.breakdown.contingencyBuffer.total,
+          },
+          assumptions: benchmark.assumptions,
         },
         days: sanitizedDays,
         disclaimer:

@@ -577,31 +577,31 @@ export function AITripGeneratorWizard({ onSwitchToManual }: AITripGeneratorWizar
                   <div className="flex flex-wrap items-center gap-2">
                     <DollarSign className="h-4 w-4 text-slate-600" />
                     <span className="text-xs font-semibold text-slate-800">
-                      Budget Feasibility Assessment
+                      Comprehensive 5-Pillar Budget Estimate
                     </span>
-                    <Badge variant="outline" className="border-amber-300 bg-amber-50 text-amber-800 text-[10px]">
-                      Preliminary (Activities Only)
+                    <Badge variant="outline" className="border-blue-300 bg-blue-50 text-blue-800 text-[10px]">
+                      Lodging + Meals + Transit + Activities
                     </Badge>
                     {draft.budgetAssessment.status === "comfortable" && (
                       <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 text-[10px]">
-                        Comfortable Activity Buffer
+                        Comfortable Budget Cushion
                       </Badge>
                     )}
                     {draft.budgetAssessment.status === "within_budget" && (
                       <Badge className="bg-blue-100 text-blue-800 border-blue-300 text-[10px]">
-                        Activities Within Budget
+                        Estimated Within Budget
                       </Badge>
                     )}
                     {draft.budgetAssessment.status === "exceeds_budget" && (
                       <Badge className="bg-rose-100 text-rose-800 border-rose-300 text-[10px]">
-                        Attention: Activities Exceed Target
+                        Attention: Estimate Exceeds Budget
                       </Badge>
                     )}
                   </div>
 
                   <div className="text-right text-xs">
-                    <span className="text-slate-500">Estimated Total Activities: </span>
-                    <span className="font-bold text-slate-900">
+                    <span className="text-slate-500">Estimated Total Cost: </span>
+                    <span className="font-bold text-slate-900 text-sm">
                       {draft.currency}{" "}
                       {draft.budgetAssessment.totalEstimatedCost.toLocaleString()}
                     </span>
@@ -614,14 +614,62 @@ export function AITripGeneratorWizard({ onSwitchToManual }: AITripGeneratorWizar
                   </div>
                 </div>
 
-                <p className="mt-2 text-xs text-slate-600 leading-relaxed">
+                {/* 5-Pillar Breakdown Chips */}
+                {draft.budgetAssessment.breakdown && (
+                  <div className="mt-3 grid grid-cols-2 sm:grid-cols-5 gap-2 pt-2 border-t border-slate-200/60">
+                    <div className="rounded-md bg-white border border-slate-100 p-2 text-center">
+                      <span className="text-[10px] text-slate-400 block font-medium">Accommodation</span>
+                      <span className="text-xs font-bold text-slate-800 block mt-0.5">
+                        {draft.currency} {draft.budgetAssessment.breakdown.accommodation.toLocaleString()}
+                      </span>
+                    </div>
+                    <div className="rounded-md bg-white border border-slate-100 p-2 text-center">
+                      <span className="text-[10px] text-slate-400 block font-medium">Food & Dining</span>
+                      <span className="text-xs font-bold text-slate-800 block mt-0.5">
+                        {draft.currency} {draft.budgetAssessment.breakdown.food.toLocaleString()}
+                      </span>
+                    </div>
+                    <div className="rounded-md bg-white border border-slate-100 p-2 text-center">
+                      <span className="text-[10px] text-slate-400 block font-medium">Transport</span>
+                      <span className="text-xs font-bold text-slate-800 block mt-0.5">
+                        {draft.currency} {draft.budgetAssessment.breakdown.transport.toLocaleString()}
+                      </span>
+                    </div>
+                    <div className="rounded-md bg-white border border-slate-100 p-2 text-center">
+                      <span className="text-[10px] text-slate-400 block font-medium">Activities</span>
+                      <span className="text-xs font-bold text-slate-800 block mt-0.5">
+                        {draft.currency} {draft.budgetAssessment.breakdown.activities.toLocaleString()}
+                      </span>
+                    </div>
+                    <div className="rounded-md bg-white border border-slate-100 p-2 text-center col-span-2 sm:col-span-1">
+                      <span className="text-[10px] text-slate-400 block font-medium">Buffer (12%)</span>
+                      <span className="text-xs font-bold text-slate-800 block mt-0.5">
+                        {draft.currency} {draft.budgetAssessment.breakdown.contingencyBuffer.toLocaleString()}
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                <p className="mt-2.5 text-xs text-slate-600 leading-relaxed">
                   {draft.budgetAssessment.advice}
                 </p>
+
+                {/* Disclosed Transparent Assumptions */}
+                {draft.budgetAssessment.assumptions && draft.budgetAssessment.assumptions.length > 0 && (
+                  <div className="mt-2.5 rounded-md border border-slate-200/80 bg-white p-2.5 text-[11px] text-slate-600 space-y-1">
+                    <span className="font-semibold text-slate-700 block">Transparent Estimate Assumptions:</span>
+                    <ul className="list-disc list-inside space-y-0.5 text-slate-500">
+                      {draft.budgetAssessment.assumptions.map((assump, aIdx) => (
+                        <li key={aIdx}>{assump}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
 
                 {draft.budgetAssessment.missingCategories && draft.budgetAssessment.missingCategories.length > 0 && (
                   <div className="mt-2.5 rounded border border-amber-200/80 bg-amber-50/70 p-2 text-[11px] text-amber-800">
                     <span className="font-medium">Missing Categories: </span>
-                    {draft.budgetAssessment.missingCategories.join(", ")} are not included in this preliminary estimate. Remember to budget separately for lodging and long-distance travel.
+                    {draft.budgetAssessment.missingCategories.join(", ")} are not included in this preliminary estimate.
                   </div>
                 )}
               </div>

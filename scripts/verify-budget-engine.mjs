@@ -12,6 +12,7 @@ import {
   computeRealBudgetBreakdown,
   generateCostSavingPlan,
   getPillarLabel,
+  estimateTripBenchmarkBudget,
 } from "../lib/budget/budgetEngine.ts";
 
 import { computeTripHealth } from "../lib/scoring/tripHealth.ts";
@@ -467,6 +468,351 @@ console.log("\nTest 14: Expense Data Structures and Operations");
   expenses = expenses.filter((e) => e.id !== "e2");
   assert(expenses.length === 2, "Expense successfully deleted from array");
   assert(!expenses.some((e) => e.id === "e2"), "Deleted expense no longer present");
+}
+
+// -----------------------------------------------------------------------------
+// Case 15: Destination-Specific Benchmark Budget Engine (Issue 2)
+// -----------------------------------------------------------------------------
+console.log("\nTest 15: Destination-Specific Benchmark Budget Engine");
+{
+  // Scenario A: 4 travelers, 5 days (4 nights), 2 rooms in Paris (EUR)
+  const parisEstimate = estimateTripBenchmarkBudget({
+    destination: "Paris",
+    startDate: "2026-11-01",
+    endDate: "2026-11-05",
+    totalDays: 5,
+    travelersCount: 4,
+    currency: "EUR",
+    pace: "moderate",
+  });
+
+  assert(parisEstimate.totalDays === 5, "Total days is 5");
+  assert(parisEstimate.nightsCount === 4, "Nights count is 4 (5 days - 1)");
+  assert(parisEstimate.roomsCount === 2, "Rooms count for 4 travelers is 2 (ceil(4/2))");
+  assert(parisEstimate.travelersCount === 4, "Travelers count is 4");
+
+  // Accommodation = nights (4) * rooms (2) * nightlyRate
+  const expectedAccom = 4 * 2 * parisEstimate.breakdown.accommodation.nightlyRate;
+  assert(parisEstimate.breakdown.accommodation.total === expectedAccom, "Accommodation strictly uses nights × rooms × nightlyRate");
+
+  // Food = totalDays (5) * travelers (4) * dailyRate
+  const expectedFood = 5 * 4 * parisEstimate.breakdown.food.dailyRatePerPerson;
+  assert(parisEstimate.breakdown.food.total === expectedFood, "Food accounts for travelers × trip duration");
+
+  // Buffer = 10% of subtotal
+  const subtotal = parisEstimate.breakdown.accommodation.total +
+    parisEstimate.breakdown.food.total +
+    parisEstimate.breakdown.transport.total +
+    parisEstimate.breakdown.activities.total;
+  const expectedBuffer = Math.round(subtotal * 0.10);
+  assert(parisEstimate.breakdown.contingencyBuffer.total === expectedBuffer, "Contingency buffer is 10% of 4-pillar subtotal");
+  assert(parisEstimate.totalEstimatedCost === subtotal + expectedBuffer, "Total estimated cost equals subtotal + contingency buffer");
+  assert(parisEstimate.assumptions.length >= 4, "Includes disclosed transparent assumptions");
+
+  // Scenario B: India destination (Bengaluru, INR) — Culturally grounded local rates
+  const indiaEstimate = estimateTripBenchmarkBudget({
+    destination: "Bengaluru",
+    startDate: "2026-10-24",
+    endDate: "2026-10-28",
+    totalDays: 5,
+    travelersCount: 2,
+    currency: "INR",
+    pace: "moderate",
+  });
+
+  assert(indiaEstimate.primaryCurrency === "INR", "Primary currency is INR");
+  assert(indiaEstimate.breakdown.accommodation.nightlyRate >= 2000, "Nightly rate in India is realistic in INR (>= ₹2,000)");
+  assert(indiaEstimate.breakdown.food.dailyRatePerPerson >= 800, "Daily food in India is realistic in INR (>= ₹800)");
+  assert(indiaEstimate.totalEstimatedCost >= 30000, "Total 5-day trip for 2 in Bengaluru is realistic (>= ₹30,000)");
+
+  // Scenario C: Multi-city trip accounts for intercity transport
+  const multiCityEstimate = estimateTripBenchmarkBudget({
+    destination: "Paris and Lucerne",
+    startDate: "2026-11-01",
+    endDate: "2026-11-07",
+    totalDays: 7,
+    travelersCount: 2,
+    currency: "EUR",
+    destinationsCount: 2,
+  });
+
+  assert(multiCityEstimate.breakdown.transport.intercityTransit > 0, "Multi-city trip includes positive intercity transport");
+  assert(multiCityEstimate.assumptions.some((a) => a.includes("Intercity Travel")), "Discloses intercity transfer assumption");
+}
+
+// -----------------------------------------------------------------------------
+// Case 16: Complete 5-Pillar Breakdown with Grounded Benchmark Items (Issue 2)
+// -----------------------------------------------------------------------------
+console.log("\nTest 16: Complete 5-Pillar Breakdown with Grounded Benchmark Items");
+{
+  const benchmark = estimateTripBenchmarkBudget({
+    destination: "Bengaluru, India",
+    startDate: "2026-10-24",
+    endDate: "2026-10-28",
+    totalDays: 5,
+    travelersCount: 2,
+    currency: "INR",
+  });
+
+  // Verify benchmark properties
+  assert(benchmark.totalEstimatedCost >= 30000, "Benchmark total estimated cost is comprehensive (>= ₹30,000 INR)");
+  assert(benchmark.breakdown.accommodation.total > 0, "Benchmark includes positive accommodation total");
+  assert(benchmark.breakdown.food.total > 0, "Benchmark includes positive food & dining total");
+  assert(benchmark.breakdown.transport.total > 0, "Benchmark includes positive transport total");
+  assert(benchmark.breakdown.contingencyBuffer.total > 0, "Benchmark includes positive contingency buffer total");
+
+  // Construct itinerary items populated with benchmark values (as generated by AI)
+  const trip = { id: "trip-inr-1", currency: "INR", total_budget: 60000 };
+  const items = [
+    {
+      id: "item-hotel",
+      category: "Accommodation",
+      title: "Hotel Check-in & Accommodation in Bengaluru",
+      estimated_cost: benchmark.breakdown.accommodation.total,
+      currency: "INR",
+    },
+    {
+      id: "item-dining",
+      category: "Food & Dining",
+      title: "Daily Meals & Dining",
+      estimated_cost: benchmark.breakdown.food.total,
+      currency: "INR",
+    },
+    {
+      id: "item-transit",
+      category: "Transport",
+      title: "City Metro & Local Transport",
+      estimated_cost: benchmark.breakdown.transport.total,
+      currency: "INR",
+    },
+    {
+      id: "item-sights",
+      category: "Sightseeing",
+      title: "Bangalore Palace & Botanical Gardens",
+      estimated_cost: benchmark.breakdown.activities.total,
+      currency: "INR",
+    },
+  ];
+
+  const breakdown = computeRealBudgetBreakdown({ trip, items, expenses: [] });
+
+  assert(breakdown.pillars.accommodation.totalCommitted > 0, "Pillars have positive committed accommodation");
+  assert(breakdown.pillars.food.totalCommitted > 0, "Pillars have positive committed food");
+  assert(breakdown.pillars.transport.totalCommitted > 0, "Pillars have positive committed transport");
+  assert(breakdown.pillars.activities.totalCommitted > 0, "Pillars have positive committed activities");
+  assert(breakdown.totalCommitted >= 30000, "Trip budget is grounded and realistic (>= ₹30,000)");
+  assert(breakdown.unknownPriceCount === 0, "Zero unpriced items; complete assessment");
+}
+
+// -----------------------------------------------------------------------------
+// Case 17: Scenario 1 — 5-Day, 2-Person Trip in India (INR)
+// -----------------------------------------------------------------------------
+console.log("\nTest 17: Scenario 1 — 5-Day, 2-Person Trip in India (INR)");
+{
+  const india5Day = estimateTripBenchmarkBudget({
+    destination: "Bengaluru, India",
+    startDate: "2026-11-10",
+    endDate: "2026-11-14",
+    totalDays: 5,
+    travelersCount: 2,
+    currency: "INR",
+  });
+
+  assert(india5Day.totalDays === 5, "Total days is 5");
+  assert(india5Day.nightsCount === 4, "Nights count is 4");
+  assert(india5Day.roomsCount === 1, "Rooms count for 2 travelers is 1");
+  assert(india5Day.travelersCount === 2, "Travelers count is 2");
+  assert(india5Day.primaryCurrency === "INR", "Primary currency is INR");
+
+  // Verify culturally grounded cost figures
+  const nightly = india5Day.breakdown.accommodation.nightlyRate;
+  const foodDaily = india5Day.breakdown.food.dailyRatePerPerson;
+  const transitDaily = india5Day.breakdown.transport.localTransit / (5 * 2);
+  const activitiesDaily = india5Day.breakdown.activities.dailyRatePerPerson;
+
+  assert(nightly >= 2500 && nightly <= 6000, `Nightly rate in Bengaluru is moderate (₹${nightly}/night)`);
+  assert(foodDaily >= 1000 && foodDaily <= 2500, `Daily food in India is realistic (₹${foodDaily}/person/day)`);
+  assert(transitDaily >= 300 && transitDaily <= 800, `Local transit in India is realistic (₹${transitDaily}/person/day)`);
+  assert(activitiesDaily >= 400 && activitiesDaily <= 1500, `Activities rate in India is realistic (₹${activitiesDaily}/person/day)`);
+
+  // Verify single 10% contingency buffer
+  const subtotal = india5Day.breakdown.accommodation.total +
+    india5Day.breakdown.food.total +
+    india5Day.breakdown.transport.total +
+    india5Day.breakdown.activities.total;
+  assert(india5Day.breakdown.contingencyBuffer.total === Math.round(subtotal * 0.10), "Contingency buffer is exactly 10%");
+  assert(india5Day.totalEstimatedCost === subtotal + india5Day.breakdown.contingencyBuffer.total, "Total cost is subtotal + 10% buffer");
+
+  // Total realistic range: ~₹30,000 to ~₹60,000 (neither $100 (~₹8,300) nor luxury ₹2,00,000)
+  assert(india5Day.totalEstimatedCost >= 30000 && india5Day.totalEstimatedCost <= 60000, `Total 5-day India estimate is moderate (₹${india5Day.totalEstimatedCost.toLocaleString()})`);
+  assert(india5Day.assumptions.length >= 4, "Assumptions disclose all pillars");
+}
+
+// -----------------------------------------------------------------------------
+// Case 18: Scenario 2 — 5-Day, 2-Person Trip in Western Europe (EUR)
+// -----------------------------------------------------------------------------
+console.log("\nTest 18: Scenario 2 — 5-Day, 2-Person Trip in Western Europe (EUR)");
+{
+  const europe5Day = estimateTripBenchmarkBudget({
+    destination: "Paris, France",
+    startDate: "2026-11-10",
+    endDate: "2026-11-14",
+    totalDays: 5,
+    travelersCount: 2,
+    currency: "EUR",
+  });
+
+  assert(europe5Day.totalDays === 5, "Total days is 5");
+  assert(europe5Day.nightsCount === 4, "Nights count is 4");
+  assert(europe5Day.roomsCount === 1, "Rooms count for 2 travelers is 1");
+  assert(europe5Day.primaryCurrency === "EUR", "Primary currency is EUR");
+
+  const nightly = europe5Day.breakdown.accommodation.nightlyRate;
+  const foodDaily = europe5Day.breakdown.food.dailyRatePerPerson;
+  const transitDaily = europe5Day.breakdown.transport.localTransit / (5 * 2);
+  const activitiesDaily = europe5Day.breakdown.activities.dailyRatePerPerson;
+
+  assert(nightly >= 100 && nightly <= 180, `Western Europe moderate lodging rate is €${nightly}/night`);
+  assert(foodDaily >= 40 && foodDaily <= 75, `Western Europe 3 meals/day rate is €${foodDaily}/person/day`);
+  assert(transitDaily >= 10 && transitDaily <= 20, `Western Europe daily transit rate is €${transitDaily}/person/day`);
+  assert(activitiesDaily >= 20 && activitiesDaily <= 40, `Western Europe activities rate is €${activitiesDaily}/person/day`);
+
+  // Total realistic range: ~€1,300 to ~€1,800
+  assert(europe5Day.totalEstimatedCost >= 1300 && europe5Day.totalEstimatedCost <= 1800, `Total 5-day Europe estimate is moderate (€${europe5Day.totalEstimatedCost.toLocaleString()})`);
+  assert(europe5Day.breakdown.contingencyBuffer.percentage === 10, "Contingency buffer percentage is 10%");
+}
+
+// -----------------------------------------------------------------------------
+// Case 19: Scenario 3 — Multi-City Trip with Intercity Transfer
+// -----------------------------------------------------------------------------
+console.log("\nTest 19: Scenario 3 — Multi-City Trip with Intercity Transfer");
+{
+  const multiCity = estimateTripBenchmarkBudget({
+    destination: "Paris and Rome",
+    startDate: "2026-11-01",
+    endDate: "2026-11-07",
+    totalDays: 7,
+    travelersCount: 2,
+    currency: "EUR",
+    destinationsCount: 2,
+  });
+
+  assert(multiCity.destinationsCount === 2, "Destinations count is 2");
+  assert(multiCity.breakdown.transport.intercityTransit > 0, "Multi-city trip calculates intercity transfer costs");
+  assert(
+    multiCity.breakdown.transport.total ===
+      multiCity.breakdown.transport.localTransit + multiCity.breakdown.transport.intercityTransit,
+    "Transport total is sum of local transit and intercity transit"
+  );
+  assert(
+    multiCity.assumptions.some((a) => a.toLowerCase().includes("intercity travel")),
+    "Discloses intercity transfer leg in transparent assumptions"
+  );
+}
+
+// -----------------------------------------------------------------------------
+// Case 20: Scenario 4 — Budget-Conscious Trip vs. Standard Trip
+// -----------------------------------------------------------------------------
+console.log("\nTest 20: Scenario 4 — Budget-Conscious Trip vs. Standard Trip");
+{
+  const budgetTrip = estimateTripBenchmarkBudget({
+    destination: "Tokyo, Japan",
+    startDate: "2026-11-01",
+    endDate: "2026-11-05",
+    totalDays: 5,
+    travelersCount: 2,
+    currency: "JPY",
+    pace: "relaxed", // maps to budget tier when userBudget=0
+  });
+
+  const moderateTrip = estimateTripBenchmarkBudget({
+    destination: "Tokyo, Japan",
+    startDate: "2026-11-01",
+    endDate: "2026-11-05",
+    totalDays: 5,
+    travelersCount: 2,
+    currency: "JPY",
+    pace: "moderate", // maps to moderate tier
+  });
+
+  // Verify budget tier is cheaper than moderate tier across pillars
+  assert(
+    budgetTrip.breakdown.accommodation.nightlyRate < moderateTrip.breakdown.accommodation.nightlyRate,
+    "Budget nightly rate is lower than moderate nightly rate"
+  );
+  assert(
+    budgetTrip.breakdown.food.dailyRatePerPerson < moderateTrip.breakdown.food.dailyRatePerPerson,
+    "Budget daily food rate is lower than moderate food rate"
+  );
+  assert(
+    budgetTrip.breakdown.activities.dailyRatePerPerson < moderateTrip.breakdown.activities.dailyRatePerPerson,
+    "Budget daily activity rate is lower than moderate activity rate"
+  );
+  assert(
+    budgetTrip.totalEstimatedCost < moderateTrip.totalEstimatedCost,
+    `Budget total (¥${budgetTrip.totalEstimatedCost.toLocaleString()}) < Moderate total (¥${moderateTrip.totalEstimatedCost.toLocaleString()})`
+  );
+  // Both remain grounded and realistic
+  assert(budgetTrip.totalEstimatedCost >= 80000, "Budget Tokyo trip is grounded and realistic (>= ¥80,000)");
+  assert(moderateTrip.totalEstimatedCost >= 120000, "Moderate Tokyo trip is realistic (>= ¥120,000)");
+}
+
+// -----------------------------------------------------------------------------
+// Case 21: Scenario 5 — User Budget Calibration (Reasonable, Generous, Shortfall)
+// -----------------------------------------------------------------------------
+console.log("\nTest 21: Scenario 5 — User Budget Calibration (Reasonable, Generous, Shortfall)");
+{
+  // 5A: Reasonable Budget (e.g. €1,600 for Paris 5-day for 2)
+  const reasonable = estimateTripBenchmarkBudget({
+    destination: "Paris, France",
+    startDate: "2026-11-10",
+    endDate: "2026-11-14",
+    totalDays: 5,
+    travelersCount: 2,
+    currency: "EUR",
+    userBudget: 1600,
+  });
+
+  assert(reasonable.status === "within_budget", "Reasonable budget status is within_budget");
+  assert(reasonable.totalEstimatedCost <= 1600, `Calibrated estimate (€${reasonable.totalEstimatedCost}) fits within stated budget (€1,600)`);
+  assert(reasonable.remainingBuffer > 0, `Intentional cushion remaining (€${reasonable.remainingBuffer})`);
+  assert(reasonable.shortfallAmount === undefined, "No shortfall for reasonable budget");
+  assert(reasonable.advice.includes("Realistic Budget Fit"), "Advice identifies realistic budget fit");
+
+  // 5B: Overly Generous Budget (e.g. €5,000 for Paris 5-day for 2)
+  const generous = estimateTripBenchmarkBudget({
+    destination: "Paris, France",
+    startDate: "2026-11-10",
+    endDate: "2026-11-14",
+    totalDays: 5,
+    travelersCount: 2,
+    currency: "EUR",
+    userBudget: 5000,
+  });
+
+  assert(generous.status === "comfortable", "Overly generous budget status is comfortable");
+  // CRITICAL RULE: Must NOT artificially inflate to €5,000! Keeps moderate estimate.
+  assert(generous.totalEstimatedCost < 2000, `Generous budget does NOT inflate itinerary; stays moderate (€${generous.totalEstimatedCost})`);
+  assert(generous.remainingBuffer >= 3000, `Generous buffer reported transparently (€${generous.remainingBuffer})`);
+  assert(generous.advice.includes("Generous Budget"), "Advice explains moderate baseline and generous cushion");
+
+  // 5C: Budget Shortfall (e.g. €400 for Paris 5-day for 2)
+  const shortfall = estimateTripBenchmarkBudget({
+    destination: "Paris, France",
+    startDate: "2026-11-10",
+    endDate: "2026-11-14",
+    totalDays: 5,
+    travelersCount: 2,
+    currency: "EUR",
+    userBudget: 400,
+  });
+
+  assert(shortfall.status === "exceeds_budget", "Shortfall status is exceeds_budget");
+  // CRITICAL RULE: Must NEVER artificially depress essential costs below reality!
+  assert(shortfall.totalEstimatedCost >= 800, `Does NOT artificially depress minimum costs below floor (€${shortfall.totalEstimatedCost})`);
+  assert(shortfall.shortfallAmount > 0, `Shortfall deficit calculated (€${shortfall.shortfallAmount})`);
+  assert(shortfall.advice.includes("Budget Shortfall"), "Advice clearly flags budget shortfall");
+  assert(shortfall.advice.includes("Practical adjustments"), "Advice provides practical adjustments (fewer days, hostel dorms, free sights)");
 }
 
 console.log("\n=================================================================");

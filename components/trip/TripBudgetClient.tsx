@@ -54,6 +54,7 @@ import { getCategoryBadgeClass, getCurrencySymbol, formatCurrencyAmount } from "
 import {
   computeRealBudgetBreakdown,
   getPillarLabel,
+  estimateTripBenchmarkBudget,
   type BudgetPillarKey,
 } from "@/lib/budget/budgetEngine";
 import {
@@ -341,6 +342,22 @@ export function TripBudgetClient({
   }, [budgetBreakdown, expenses, items]);
 
   const isBudgetAssessmentComplete = hasLodging && hasTransport && unknownPriceItemsCount === 0;
+
+  // Destination benchmark estimate for unrecorded categories / reference
+  const destinationBenchmark = useMemo(() => {
+    const destName = stops.length > 0
+      ? (stops[0].custom_city_name || stops[0].cities?.name || trip.title)
+      : trip.title;
+    return estimateTripBenchmarkBudget({
+      destination: destName,
+      startDate: trip.start_date,
+      endDate: trip.end_date,
+      currency: trip.currency,
+      travelersCount: members.length > 0 ? members.length : 2,
+      destinationsCount: stops.length > 0 ? stops.length : 1,
+      userBudget: trip.total_budget ? Number(trip.total_budget) : undefined,
+    });
+  }, [stops, trip.title, trip.start_date, trip.end_date, trip.currency, trip.total_budget, members.length]);
 
   // 5-Pillar Distribution Data for Recharts
   const categoryData = useMemo(() => {
@@ -861,18 +878,65 @@ export function TripBudgetClient({
 
         {/* Missing Required Categories Warning Banner (Task 5) */}
         {!isBudgetAssessmentComplete && (
-          <div className="flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50/80 p-3.5 text-xs text-amber-900">
-            <AlertCircle className="h-4 w-4 shrink-0 text-amber-600 mt-0.5" />
-            <div className="leading-relaxed">
-              <strong className="font-semibold">Preliminary Budget Assessment:</strong> Target budget comparison is incomplete.{" "}
-              {[
-                !hasLodging ? "Accommodation / Lodging expenses" : "",
-                !hasTransport ? "Transportation / Transit" : "",
-                unknownPriceItemsCount > 0 ? `${unknownPriceItemsCount} unpriced activity(ies)` : "",
-              ]
-                .filter(Boolean)
-                .join(" and ")}{" "}
-              are not yet recorded. Do not assume your trip is fully within budget until all required cost categories are accounted for.
+          <div className="space-y-3">
+            <div className="flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50/80 p-3.5 text-xs text-amber-900">
+              <AlertCircle className="h-4 w-4 shrink-0 text-amber-600 mt-0.5" />
+              <div className="leading-relaxed">
+                <strong className="font-semibold">Preliminary Budget Assessment:</strong> Target budget comparison is incomplete.{" "}
+                {[
+                  !hasLodging ? "Accommodation / Lodging expenses" : "",
+                  !hasTransport ? "Transportation / Transit" : "",
+                  unknownPriceItemsCount > 0 ? `${unknownPriceItemsCount} unpriced activity(ies)` : "",
+                ]
+                  .filter(Boolean)
+                  .join(" and ")}{" "}
+                are not yet recorded. Do not assume your trip is fully within budget until all required cost categories are accounted for.
+              </div>
+            </div>
+
+            {/* Destination Cost Baseline Guide */}
+            <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4 text-xs text-slate-700">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200/80 pb-2.5">
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold text-slate-900">Typical Destination Baseline (Reference Only)</span>
+                  <Badge variant="outline" className="text-[10px] border-slate-300 bg-white">
+                    {destinationBenchmark.totalDays} Days • {destinationBenchmark.travelersCount} Traveler(s)
+                  </Badge>
+                </div>
+                <span className="font-bold text-slate-900">
+                  Est. Baseline: {destinationBenchmark.primaryCurrency}{" "}
+                  {destinationBenchmark.totalEstimatedCost.toLocaleString()}
+                </span>
+              </div>
+              <div className="mt-2.5 grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px]">
+                <div className="bg-white rounded-md p-2 border border-slate-200/60">
+                  <span className="text-slate-400 block font-medium">Accommodation ({destinationBenchmark.roomsCount} room)</span>
+                  <span className="font-semibold text-slate-800 mt-0.5 block">
+                    ~{destinationBenchmark.primaryCurrency} {destinationBenchmark.breakdown.accommodation.total.toLocaleString()}
+                  </span>
+                </div>
+                <div className="bg-white rounded-md p-2 border border-slate-200/60">
+                  <span className="text-slate-400 block font-medium">Food & Dining (3 meals/day)</span>
+                  <span className="font-semibold text-slate-800 mt-0.5 block">
+                    ~{destinationBenchmark.primaryCurrency} {destinationBenchmark.breakdown.food.total.toLocaleString()}
+                  </span>
+                </div>
+                <div className="bg-white rounded-md p-2 border border-slate-200/60">
+                  <span className="text-slate-400 block font-medium">Local & Rail Transit</span>
+                  <span className="font-semibold text-slate-800 mt-0.5 block">
+                    ~{destinationBenchmark.primaryCurrency} {destinationBenchmark.breakdown.transport.total.toLocaleString()}
+                  </span>
+                </div>
+                <div className="bg-white rounded-md p-2 border border-slate-200/60">
+                  <span className="text-slate-400 block font-medium">Activities + Buffer</span>
+                  <span className="font-semibold text-slate-800 mt-0.5 block">
+                    ~{destinationBenchmark.primaryCurrency} {(destinationBenchmark.breakdown.activities.total + destinationBenchmark.breakdown.contingencyBuffer.total).toLocaleString()}
+                  </span>
+                </div>
+              </div>
+              <p className="mt-2 text-[10px] text-slate-500 italic">
+                Indicative market estimate for travel planning. Live prices, hotel rates, and ticket availability vary by booking window and season.
+              </p>
             </div>
           </div>
         )}

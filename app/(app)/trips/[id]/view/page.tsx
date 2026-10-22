@@ -22,6 +22,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { getCategoryBadgeClass, formatTimeRange, formatCurrencyAmount } from "@/lib/utils";
 import { TripAssistantDrawer } from "@/components/ai/TripAssistantDrawer";
 import { TripViewHeaderActions } from "@/components/trip/TripViewHeaderActions";
+import { BookTripSection } from "@/components/trip/BookTripSection";
 
 
 export default async function TripViewPage({
@@ -333,6 +334,11 @@ export default async function TripViewPage({
               )}
             </div>
           </div>
+        </div>
+
+        {/* Book Your Trip Section */}
+        <div className="mt-8">
+          <BookTripSection trip={tripData} stops={stops} />
         </div>
 
         {/* Day-by-Day Timeline */}
