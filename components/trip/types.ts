@@ -75,6 +75,25 @@ export interface Trip {
   created_at: string;
 }
 
+export interface TripMember {
+  id: string;
+  trip_id: string;
+  user_id?: string | null;
+  display_name: string;
+  email?: string | null;
+  role: "owner" | "member";
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface ExpenseSplit {
+  id?: string;
+  expense_id: string;
+  member_id: string;
+  amount: number;
+  member_name?: string;
+}
+
 export interface Expense {
   id: string;
   trip_id: string;
@@ -86,6 +105,14 @@ export interface Expense {
   expense_date?: string | null;
   payment_method?: string | null;
   notes?: string | null;
+  paid_by_member_id?: string | null;
+  split_type?: "equal" | "custom" | null;
+  paid_by?: {
+    id: string;
+    display_name: string;
+    role: string;
+  } | null;
+  splits?: ExpenseSplit[];
   created_at?: string;
   updated_at?: string;
 }

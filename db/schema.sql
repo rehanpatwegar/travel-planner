@@ -218,13 +218,48 @@ before update on public.itinerary_items
 for each row execute function public.handle_updated_at();
 
 -- ------------------------------------------------------------------------------
--- 8. Expenses Table (`expenses`)
+-- 8. Trip Members Table (`trip_members`)
+-- Tracks travel companions per trip for group planning and expense splitting.
+-- ------------------------------------------------------------------------------
+create table public.trip_members (
+  id uuid primary key default gen_random_uuid(),
+  trip_id uuid not null references public.trips(id) on delete cascade,
+  user_id uuid references public.profiles(id) on delete set null,
+  display_name text not null,
+  email text,
+  role text not null default 'member' check (role in ('owner', 'member')),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+comment on table public.trip_members is 'Travel companions and participants associated with a trip for group planning and expense splitting.';
+
+-- Prevent case-insensitive duplicate member names within the same trip
+create unique index idx_trip_members_trip_display_name_lower
+  on public.trip_members (trip_id, lower(trim(display_name)));
+
+-- Prevent duplicate linking of the same authenticated user profile to a trip
+create unique index idx_trip_members_trip_user
+  on public.trip_members (trip_id, user_id)
+  where user_id is not null;
+
+create index idx_trip_members_trip on public.trip_members (trip_id);
+create index idx_trip_members_user on public.trip_members (user_id);
+
+create trigger set_trip_members_updated_at
+before update on public.trip_members
+for each row execute function public.handle_updated_at();
+
+-- ------------------------------------------------------------------------------
+-- 9. Expenses Table (`expenses`)
 -- Tracks planned and actual costs against a trip budget with categories.
+-- Supports group trip splitting with payer tracking and split type.
 -- ------------------------------------------------------------------------------
 create table public.expenses (
   id uuid primary key default gen_random_uuid(),
   trip_id uuid not null references public.trips(id) on delete cascade,
   itinerary_item_id uuid references public.itinerary_items(id) on delete set null,
+  paid_by_member_id uuid references public.trip_members(id) on delete set null,
   title text not null,
   amount numeric(10, 2) not null check (amount >= 0),
   currency varchar(3) not null default 'USD',
@@ -238,6 +273,7 @@ create table public.expenses (
       'Miscellaneous'
     )
   ),
+  split_type text not null default 'equal' check (split_type in ('equal', 'custom')),
   expense_date date,
   payment_method text,
   notes text,
@@ -245,18 +281,37 @@ create table public.expenses (
   updated_at timestamptz not null default now()
 );
 
-comment on table public.expenses is 'Individual expenses and budgeted items for cost breakdowns and charts.';
+comment on table public.expenses is 'Individual expenses and budgeted items for cost breakdowns, charts, and group splits.';
 
 create index idx_expenses_trip on public.expenses(trip_id);
 create index idx_expenses_category on public.expenses(trip_id, category);
 create index idx_expenses_date on public.expenses(trip_id, expense_date);
+create index idx_expenses_paid_by on public.expenses(paid_by_member_id);
 
 create trigger set_expenses_updated_at
 before update on public.expenses
 for each row execute function public.handle_updated_at();
 
 -- ------------------------------------------------------------------------------
--- 9. Publicly Shared Trips Table (`shared_trips`)
+-- 10. Expense Splits Table (`expense_splits`)
+-- Records individual participant shares for group trip expense splitting.
+-- ------------------------------------------------------------------------------
+create table public.expense_splits (
+  id uuid primary key default gen_random_uuid(),
+  expense_id uuid not null references public.expenses(id) on delete cascade,
+  member_id uuid not null references public.trip_members(id) on delete cascade,
+  amount numeric(10, 2) not null check (amount >= 0),
+  created_at timestamptz not null default now(),
+  constraint uq_expense_splits_expense_member unique (expense_id, member_id)
+);
+
+comment on table public.expense_splits is 'Individual participant liability shares for a specific group expense.';
+
+create index idx_expense_splits_expense on public.expense_splits (expense_id);
+create index idx_expense_splits_member on public.expense_splits (member_id);
+
+-- ------------------------------------------------------------------------------
+-- 11. Publicly Shared Trips Table (`shared_trips`)
 -- Manages read-only public sharing links and permissions.
 -- ------------------------------------------------------------------------------
 create table public.shared_trips (
@@ -286,7 +341,9 @@ alter table public.activities enable row level security;
 alter table public.trips enable row level security;
 alter table public.trip_stops enable row level security;
 alter table public.itinerary_items enable row level security;
+alter table public.trip_members enable row level security;
 alter table public.expenses enable row level security;
+alter table public.expense_splits enable row level security;
 alter table public.shared_trips enable row level security;
 
 -- ------------------------------------------------------------------------------
@@ -495,6 +552,121 @@ create policy "Trip owner can delete expenses"
     exists (
       select 1 from public.trips
       where trips.id = expenses.trip_id
+        and trips.user_id = auth.uid()
+    )
+  );
+
+-- ------------------------------------------------------------------------------
+-- Trip Members Policies
+-- Private to the trip owner only (Owner-Managed MVP).
+-- ------------------------------------------------------------------------------
+create policy "Trip owner can view trip members"
+  on public.trip_members for select
+  to authenticated
+  using (
+    exists (
+      select 1 from public.trips
+      where trips.id = trip_members.trip_id
+        and trips.user_id = auth.uid()
+    )
+  );
+
+create policy "Trip owner can insert trip members"
+  on public.trip_members for insert
+  to authenticated
+  with check (
+    exists (
+      select 1 from public.trips
+      where trips.id = trip_members.trip_id
+        and trips.user_id = auth.uid()
+    )
+  );
+
+create policy "Trip owner can update trip members"
+  on public.trip_members for update
+  to authenticated
+  using (
+    exists (
+      select 1 from public.trips
+      where trips.id = trip_members.trip_id
+        and trips.user_id = auth.uid()
+    )
+  )
+  with check (
+    exists (
+      select 1 from public.trips
+      where trips.id = trip_members.trip_id
+        and trips.user_id = auth.uid()
+    )
+  );
+
+create policy "Trip owner can delete trip members"
+  on public.trip_members for delete
+  to authenticated
+  using (
+    exists (
+      select 1 from public.trips
+      where trips.id = trip_members.trip_id
+        and trips.user_id = auth.uid()
+    )
+  );
+
+-- ------------------------------------------------------------------------------
+-- Expense Splits Policies
+-- Private to the trip owner only (Owner-Managed MVP).
+-- ------------------------------------------------------------------------------
+create policy "Trip owner can view expense splits"
+  on public.expense_splits for select
+  to authenticated
+  using (
+    exists (
+      select 1 from public.expenses
+      join public.trips on trips.id = expenses.trip_id
+      where expenses.id = expense_splits.expense_id
+        and trips.user_id = auth.uid()
+    )
+  );
+
+create policy "Trip owner can insert expense splits"
+  on public.expense_splits for insert
+  to authenticated
+  with check (
+    exists (
+      select 1 from public.expenses
+      join public.trips on trips.id = expenses.trip_id
+      where expenses.id = expense_splits.expense_id
+        and trips.user_id = auth.uid()
+    )
+  );
+
+create policy "Trip owner can update expense splits"
+  on public.expense_splits for update
+  to authenticated
+  using (
+    exists (
+      select 1 from public.expenses
+      join public.trips on trips.id = expenses.trip_id
+      where expenses.id = expense_splits.expense_id
+        and trips.user_id = auth.uid()
+    )
+  )
+  with check (
+    exists (
+      select 1 from public.expenses
+      join public.trips on trips.id = expenses.trip_id
+      where expenses.id = expense_splits.expense_id
+        and trips.user_id = auth.uid()
+    )
+  );
+
+create policy "Trip owner can delete expense splits"
+  on public.expense_splits for delete
+  to authenticated
+  using (
+    exists (
+      select 1 from public.expenses
+      join public.trips on trips.id = expenses.trip_id
+      where expenses.id = expense_splits.expense_id
         and trips.user_id = auth.uid()
     )
   );

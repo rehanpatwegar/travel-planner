@@ -30,6 +30,9 @@ import {
   Utensils,
   Compass,
   ShoppingBag,
+  User,
+  Users,
+  Scale,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -46,15 +49,22 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Trip, TripStop, ItineraryItem, Expense } from "./types";
+import { Trip, TripStop, ItineraryItem, Expense, TripMember } from "./types";
 import { getCategoryBadgeClass, getCurrencySymbol, formatCurrencyAmount } from "@/lib/utils";
 import {
   computeRealBudgetBreakdown,
   getPillarLabel,
   type BudgetPillarKey,
 } from "@/lib/budget/budgetEngine";
+import {
+  calculateEqualSplit,
+  toCents,
+  fromCents,
+} from "@/lib/budget/splitEngine";
 import { PriceConfidenceBadge } from "./PriceConfidenceBadge";
 import { CostSavingModal } from "./CostSavingModal";
+import { TripMembersCard } from "./TripMembersCard";
+import { GroupSplitBalancesCard } from "./GroupSplitBalancesCard";
 
 interface TripBudgetClientProps {
   trip: Trip;
@@ -133,6 +143,8 @@ export function TripBudgetClient({
   const [trip, setTrip] = useState<Trip>(initialTrip);
   const [items, setItems] = useState<ItineraryItem[]>(initialItems);
   const [expenses, setExpenses] = useState<Expense[]>(initialExpenses);
+  const [members, setMembers] = useState<TripMember[]>([]);
+  const [isLoadingMembers, setIsLoadingMembers] = useState(true);
 
   const [isMounted, setIsMounted] = useState(false);
   useEffect(() => {
@@ -159,12 +171,125 @@ export function TripBudgetClient({
   const [isSubmittingExpense, setIsSubmittingExpense] = useState(false);
   const [expenseError, setExpenseError] = useState<string | null>(null);
 
+  // Group Trip Split Fields for Expense Modal
+  const [paidByMemberId, setPaidByMemberId] = useState<string>("");
+  const [splitMode, setSplitMode] = useState<"none" | "equal" | "custom">("none");
+  const [equalParticipantIds, setEqualParticipantIds] = useState<string[]>([]);
+  const [customShares, setCustomShares] = useState<Record<string, string>>({});
+
   // Deleting Expense State
   const [deletingExpenseId, setDeletingExpenseId] = useState<string | null>(null);
   const [deleteExpenseError, setDeleteExpenseError] = useState<string | null>(null);
 
   // Cost Saving 30% Modal State
   const [isCostSavingModalOpen, setIsCostSavingModalOpen] = useState(false);
+
+  // Re-fetch persisted expenses and members
+  async function refreshExpenses() {
+    try {
+      const res = await fetch(`/api/trips/${trip.id}/expenses`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.expenses) {
+          setExpenses(data.expenses);
+        }
+      }
+    } catch (err) {
+      console.error("Failed to refresh expenses:", err);
+    }
+  }
+
+  // Initial load of members (with auto-initialization) and enriched expenses
+  useEffect(() => {
+    let isCurrent = true;
+    async function loadGroupData() {
+      setIsLoadingMembers(true);
+      try {
+        const [membersRes, expensesRes] = await Promise.all([
+          fetch(`/api/trips/${trip.id}/members`),
+          fetch(`/api/trips/${trip.id}/expenses`),
+        ]);
+
+        if (!isCurrent) return;
+
+        if (membersRes.ok) {
+          const mData = await membersRes.json();
+          if (mData.members) {
+            setMembers(mData.members);
+          }
+        }
+
+        if (expensesRes.ok) {
+          const eData = await expensesRes.json();
+          if (eData.expenses) {
+            setExpenses(eData.expenses);
+          }
+        }
+      } catch (err) {
+        console.error("Error loading group split data:", err);
+      } finally {
+        if (isCurrent) {
+          setIsLoadingMembers(false);
+        }
+      }
+    }
+
+    loadGroupData();
+    return () => {
+      isCurrent = false;
+    };
+  }, [trip.id]);
+
+  function handleOpenAddExpense() {
+    setExpenseError(null);
+    const ownerMember = members.find((m) => m.role === "owner") || members[0];
+    if (ownerMember) {
+      setPaidByMemberId(ownerMember.id);
+    } else {
+      setPaidByMemberId("");
+    }
+
+    if (members.length > 0) {
+      setEqualParticipantIds(members.map((m) => m.id));
+      const initialCustom: Record<string, string> = {};
+      members.forEach((m) => {
+        initialCustom[m.id] = "";
+      });
+      setCustomShares(initialCustom);
+    }
+
+    setSplitMode(members.length > 1 ? "equal" : "none");
+    setIsAddExpenseOpen(true);
+  }
+
+  // Equal split real-time calculation preview
+  const equalSplitPreview = useMemo(() => {
+    const costNum = Number(expenseAmount);
+    if (isNaN(costNum) || costNum <= 0 || equalParticipantIds.length === 0) {
+      return null;
+    }
+    try {
+      return calculateEqualSplit(costNum, equalParticipantIds);
+    } catch {
+      return null;
+    }
+  }, [expenseAmount, equalParticipantIds]);
+
+  // Custom split real-time balance calculations
+  const targetExpenseCents = useMemo(() => {
+    const num = Number(expenseAmount);
+    return isNaN(num) || num <= 0 ? 0 : toCents(num);
+  }, [expenseAmount]);
+
+  const customAllocatedCents = useMemo(() => {
+    return members.reduce((sum, m) => {
+      const val = customShares[m.id];
+      const num = Number(val);
+      return sum + (isNaN(num) || num < 0 ? 0 : toCents(num));
+    }, 0);
+  }, [members, customShares]);
+
+  const customDiscrepancyCents = targetExpenseCents - customAllocatedCents;
 
   const primaryCurrency = useMemo(
     () => (trip.currency || "USD").trim().toUpperCase(),
@@ -349,22 +474,57 @@ export function TripBudgetClient({
       return;
     }
 
+    if (splitMode === "equal") {
+      if (equalParticipantIds.length === 0) {
+        setExpenseError("Please select at least one participant to split this expense.");
+        return;
+      }
+    } else if (splitMode === "custom") {
+      if (targetExpenseCents <= 0) {
+        setExpenseError("Please enter an expense amount greater than zero for custom splitting.");
+        return;
+      }
+      if (customDiscrepancyCents !== 0) {
+        setExpenseError(
+          `Custom split allocations must match the total expense amount. Discrepancy: ${formatCurrency(
+            fromCents(Math.abs(customDiscrepancyCents)),
+            expenseCurrency
+          )}`
+        );
+        return;
+      }
+    }
+
     setIsSubmittingExpense(true);
 
     try {
+      const payload: Record<string, any> = {
+        title: expenseTitle.trim(),
+        amount: num,
+        category: expenseCategory,
+        currency: (expenseCurrency || trip.currency || "USD").trim().toUpperCase(),
+        expense_date: expenseDate || null,
+        payment_method: expensePaymentMethod.trim() || null,
+        notes: expenseNotes.trim() || null,
+        itinerary_item_id: expenseItineraryItemId || null,
+        paid_by_member_id: paidByMemberId || null,
+      };
+
+      if (splitMode === "equal" && equalParticipantIds.length > 0) {
+        payload.split_type = "equal";
+        payload.split_member_ids = equalParticipantIds;
+      } else if (splitMode === "custom") {
+        payload.split_type = "custom";
+        payload.custom_splits = members.map((m) => ({
+          member_id: m.id,
+          amount: Number(customShares[m.id]) || 0,
+        }));
+      }
+
       const res = await fetch(`/api/trips/${trip.id}/expenses`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: expenseTitle.trim(),
-          amount: num,
-          category: expenseCategory,
-          currency: (expenseCurrency || trip.currency || "USD").trim().toUpperCase(),
-          expense_date: expenseDate || null,
-          payment_method: expensePaymentMethod.trim() || null,
-          notes: expenseNotes.trim() || null,
-          itinerary_item_id: expenseItineraryItemId || null,
-        }),
+        body: JSON.stringify(payload),
       });
 
       if (!res.ok) {
@@ -372,8 +532,8 @@ export function TripBudgetClient({
         throw new Error(data.error || "Failed to record expense");
       }
 
-      const { expense: newExp } = await res.json();
-      setExpenses((prev) => [newExp, ...prev]);
+      // Re-fetch persisted expenses to maintain 100% server sync
+      await refreshExpenses();
 
       // Reset form
       setExpenseTitle("");
@@ -409,6 +569,7 @@ export function TripBudgetClient({
       }
 
       setExpenses((prev) => prev.filter((e) => e.id !== expenseId));
+      await refreshExpenses();
     } catch (err) {
       console.error("Failed to delete expense:", err);
       setDeleteExpenseError(err instanceof Error ? err.message : "Error removing expense");
@@ -1006,6 +1167,26 @@ export function TripBudgetClient({
           </Card>
         </div>
 
+        {/* Group Expense Split & Travel Companions Section */}
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+          <div className="lg:col-span-1">
+            <TripMembersCard
+              tripId={trip.id}
+              members={members}
+              loading={isLoadingMembers}
+              onMembersChange={setMembers}
+              onExpenseRefreshNeeded={refreshExpenses}
+            />
+          </div>
+          <div className="lg:col-span-2">
+            <GroupSplitBalancesCard
+              members={members}
+              expenses={expenses}
+              primaryCurrency={primaryCurrency}
+            />
+          </div>
+        </div>
+
         {/* Expenses List & Activity Estimates Tabs / Sections */}
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
           {/* Custom Logged Expenses (2 columns) */}
@@ -1026,7 +1207,7 @@ export function TripBudgetClient({
               <Button
                 size="sm"
                 variant="outline"
-                onClick={() => setIsAddExpenseOpen(true)}
+                onClick={handleOpenAddExpense}
                 className="text-xs h-7 gap-1 text-emerald-700 border-emerald-200 hover:bg-emerald-50"
               >
                 <Plus className="h-3 w-3" />
@@ -1049,7 +1230,7 @@ export function TripBudgetClient({
                   <Button
                     size="sm"
                     variant="ghost"
-                    onClick={() => setIsAddExpenseOpen(true)}
+                    onClick={handleOpenAddExpense}
                     className="mt-3 text-xs text-emerald-600 hover:text-emerald-700 font-medium"
                   >
                     + Add your first expense
@@ -1073,6 +1254,15 @@ export function TripBudgetClient({
                           >
                             {expense.category}
                           </Badge>
+                          {expense.paid_by && (
+                            <Badge
+                              variant="outline"
+                              className="text-[9px] px-1.5 py-0 border-blue-200 bg-blue-50 text-blue-700 font-medium inline-flex items-center gap-1"
+                            >
+                              <User className="h-2.5 w-2.5" />
+                              Paid by {expense.paid_by.display_name}
+                            </Badge>
+                          )}
                           {expense.itinerary_item_id && (
                             <Badge
                               variant="outline"
@@ -1082,6 +1272,29 @@ export function TripBudgetClient({
                             </Badge>
                           )}
                         </div>
+
+                        {/* Cost Split Breakdown Pill */}
+                        {expense.splits && expense.splits.length > 0 && (
+                          <div className="flex items-center gap-1.5 flex-wrap pt-0.5 text-[10px] text-slate-500">
+                            <Badge
+                              variant="outline"
+                              className="text-[9px] px-1.5 py-0 border-emerald-200 bg-emerald-50/50 text-emerald-800 font-medium"
+                            >
+                              {expense.split_type === "custom" ? "Custom Split" : "Equal Split"} ({expense.splits.length})
+                            </Badge>
+                            <span className="truncate max-w-md">
+                              {expense.splits
+                                .map(
+                                  (s) =>
+                                    `${s.member_name || "Member"}: ${formatCurrency(
+                                      Number(s.amount),
+                                      expense.currency
+                                    )}`
+                                )
+                                .join(" • ")}
+                            </span>
+                          </div>
+                        )}
 
                         <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-400">
                           {expense.expense_date && (
@@ -1382,6 +1595,226 @@ export function TripBudgetClient({
                 </select>
               </div>
 
+              {/* Paid By Selector */}
+              <div>
+                <label className="font-semibold text-slate-700 block mb-1">
+                  Paid By (Trip Member)
+                </label>
+                <select
+                  value={paidByMemberId}
+                  onChange={(e) => setPaidByMemberId(e.target.value)}
+                  className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-hidden"
+                >
+                  <option value="">-- Personal / Unassigned Payer --</option>
+                  {members.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.display_name} {m.role === "owner" ? "(Organizer)" : "(Companion)"}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[10px] text-slate-400 mt-1">
+                  Assign who originally paid this expense to track balances and reimbursements.
+                </p>
+              </div>
+
+              {/* Expense Splitting Selector */}
+              {members.length > 0 && (
+                <div className="space-y-2 pt-1 border-t border-slate-100">
+                  <label className="font-semibold text-slate-700 block text-xs">
+                    Expense Splitting Mode
+                  </label>
+                  <div className="grid grid-cols-3 gap-1 bg-slate-100 p-1 rounded-lg">
+                    <button
+                      type="button"
+                      onClick={() => setSplitMode("none")}
+                      className={`py-1.5 text-[11px] font-semibold rounded-md transition-all ${
+                        splitMode === "none"
+                          ? "bg-white text-slate-900 shadow-2xs font-bold"
+                          : "text-slate-500 hover:text-slate-800"
+                      }`}
+                    >
+                      No Split (Solo)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSplitMode("equal")}
+                      className={`py-1.5 text-[11px] font-semibold rounded-md transition-all ${
+                        splitMode === "equal"
+                          ? "bg-white text-slate-900 shadow-2xs font-bold"
+                          : "text-slate-500 hover:text-slate-800"
+                      }`}
+                    >
+                      Equal Split
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSplitMode("custom")}
+                      className={`py-1.5 text-[11px] font-semibold rounded-md transition-all ${
+                        splitMode === "custom"
+                          ? "bg-white text-slate-900 shadow-2xs font-bold"
+                          : "text-slate-500 hover:text-slate-800"
+                      }`}
+                    >
+                      Custom Split
+                    </button>
+                  </div>
+
+                  {/* Equal Split Participant Selection & Live Preview */}
+                  {splitMode === "equal" && (
+                    <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50/70 p-3 text-xs">
+                      <div className="flex items-center justify-between">
+                        <span className="font-semibold text-slate-800 text-[11px]">
+                          Select Participants ({equalParticipantIds.length} of {members.length})
+                        </span>
+                        <div className="flex items-center gap-2 text-[10px]">
+                          <button
+                            type="button"
+                            onClick={() => setEqualParticipantIds(members.map((m) => m.id))}
+                            className="text-emerald-700 font-medium hover:underline"
+                          >
+                            Select All
+                          </button>
+                          <span className="text-slate-300">|</span>
+                          <button
+                            type="button"
+                            onClick={() => setEqualParticipantIds([])}
+                            className="text-slate-500 font-medium hover:underline"
+                          >
+                            Clear
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-1.5 max-h-32 overflow-y-auto pr-1">
+                        {members.map((m) => {
+                          const isChecked = equalParticipantIds.includes(m.id);
+                          return (
+                            <label
+                              key={m.id}
+                              className={`flex items-center gap-2 p-1.5 rounded-md border text-xs cursor-pointer transition-colors ${
+                                isChecked
+                                  ? "bg-white border-emerald-300 text-slate-900 shadow-2xs"
+                                  : "bg-slate-50/70 border-slate-200 text-slate-500"
+                              }`}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={isChecked}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setEqualParticipantIds((prev) => [...prev, m.id]);
+                                  } else {
+                                    setEqualParticipantIds((prev) =>
+                                      prev.filter((id) => id !== m.id)
+                                    );
+                                  }
+                                }}
+                                className="rounded text-emerald-600 focus:ring-emerald-500 h-3.5 w-3.5"
+                              />
+                              <span className="truncate font-medium">{m.display_name}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
+
+                      {equalSplitPreview ? (
+                        <div className="rounded-md border border-emerald-200 bg-emerald-50 p-2 text-[11px] text-emerald-900 space-y-1">
+                          <div className="flex items-center justify-between font-bold">
+                            <span>Exact Equal Shares Preview:</span>
+                            <span>Total: {formatCurrency(equalSplitPreview.totalAmount, expenseCurrency)}</span>
+                          </div>
+                          <div className="flex flex-wrap gap-1 text-[10px]">
+                            {equalSplitPreview.shares.map((s) => {
+                              const member = members.find((m) => m.id === s.memberId);
+                              return (
+                                <span
+                                  key={s.memberId}
+                                  className="bg-white border border-emerald-300 px-1.5 py-0.5 rounded text-emerald-800 font-medium"
+                                >
+                                  {member?.display_name || "Member"}: {formatCurrency(s.amount, expenseCurrency)}
+                                </span>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-[10px] text-slate-400 italic">
+                          Enter an expense amount above and select participants to preview split shares.
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Custom Split Inputs & Balance Indicator */}
+                  {splitMode === "custom" && (
+                    <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50/70 p-3 text-xs">
+                      <div className="flex items-center justify-between text-[11px]">
+                        <span className="font-semibold text-slate-800">
+                          Custom Share per Member
+                        </span>
+                        <span className="font-bold text-slate-600">
+                          Total Expense: {formatCurrency(fromCents(targetExpenseCents), expenseCurrency)}
+                        </span>
+                      </div>
+
+                      <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
+                        {members.map((m) => (
+                          <div
+                            key={m.id}
+                            className="flex items-center justify-between gap-2 p-1.5 bg-white border border-slate-200 rounded-md"
+                          >
+                            <span className="truncate font-medium text-slate-800 flex-1">
+                              {m.display_name}
+                            </span>
+                            <div className="flex items-center gap-1 shrink-0">
+                              <span className="text-slate-400 text-[10px] font-mono">
+                                {getCurrencySymbol(expenseCurrency || primaryCurrency)}
+                              </span>
+                              <input
+                                type="number"
+                                step="any"
+                                min="0"
+                                placeholder="0.00"
+                                value={customShares[m.id] || ""}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  setCustomShares((prev) => ({
+                                    ...prev,
+                                    [m.id]: val,
+                                  }));
+                                }}
+                                className="w-20 rounded border border-slate-300 px-2 py-1 text-right text-xs focus:ring-1 focus:ring-emerald-500 font-mono"
+                              />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div
+                        className={`rounded-md p-2 text-[11px] border font-medium ${
+                          customDiscrepancyCents === 0 && targetExpenseCents > 0
+                            ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+                            : customDiscrepancyCents > 0
+                            ? "bg-amber-50 border-amber-200 text-amber-800"
+                            : "bg-rose-50 border-rose-200 text-rose-800"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between font-bold">
+                          <span>Allocated: {formatCurrency(fromCents(customAllocatedCents), expenseCurrency)}</span>
+                          <span>
+                            {customDiscrepancyCents === 0 && targetExpenseCents > 0
+                              ? "✓ Matches Exactly"
+                              : customDiscrepancyCents > 0
+                              ? `Remaining: ${formatCurrency(fromCents(customDiscrepancyCents), expenseCurrency)}`
+                              : `Over-allocated by: ${formatCurrency(fromCents(Math.abs(customDiscrepancyCents)), expenseCurrency)}`}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="font-semibold text-slate-700 block mb-1">
@@ -1456,7 +1889,12 @@ export function TripBudgetClient({
                 <Button
                   type="submit"
                   size="sm"
-                  disabled={isSubmittingExpense}
+                  disabled={
+                    isSubmittingExpense ||
+                    (splitMode === "custom" &&
+                      (customDiscrepancyCents !== 0 || targetExpenseCents <= 0)) ||
+                    (splitMode === "equal" && equalParticipantIds.length === 0)
+                  }
                   className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs"
                 >
                   {isSubmittingExpense ? "Recording..." : "Record Expense"}
