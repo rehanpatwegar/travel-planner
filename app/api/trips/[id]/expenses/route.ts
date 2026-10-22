@@ -113,6 +113,7 @@ export async function POST(
       expense_date,
       payment_method,
       notes,
+      itinerary_item_id,
     } = body;
 
     if (!title || typeof title !== "string" || !title.trim()) {
@@ -160,8 +161,28 @@ export async function POST(
       validDate = expense_date;
     }
 
+    // Validate optional itinerary item link (must belong to this same trip)
+    let validItineraryItemId: string | null = null;
+    if (itinerary_item_id && typeof itinerary_item_id === "string" && itinerary_item_id.trim()) {
+      const { data: itemData, error: itemError } = await supabase
+        .from("itinerary_items")
+        .select("id, trip_id")
+        .eq("id", itinerary_item_id.trim())
+        .eq("trip_id", id)
+        .maybeSingle();
+
+      if (itemError || !itemData) {
+        return NextResponse.json(
+          { error: "Invalid linked activity: Item does not belong to this trip" },
+          { status: 400 }
+        );
+      }
+      validItineraryItemId = itemData.id;
+    }
+
     const insertPayload = {
       trip_id: id,
+      itinerary_item_id: validItineraryItemId,
       title: title.trim(),
       amount: costNum,
       category,
