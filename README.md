@@ -1,229 +1,229 @@
-# GlobeTrotter
+# GlobeTrotter 🌍
 
-> **Your next adventure, thoughtfully planned.**
+Plan smarter. Travel better.
 
-GlobeTrotter is a modern, responsive web application designed for multi-city travel planning. It centralizes route organization, day-by-day scheduling, expense tracking, calendar timelines, and AI-assisted recommendations into a unified, intuitive platform.
+GlobeTrotter is an AI-powered travel planning platform that helps users create, organize, optimize, and manage personalized multi-city trips. It brings itineraries, budgets, expenses, calendars, and intelligent travel recommendations together in one place.
 
----
-
-## Table of Contents
-
-- [Overview](#overview)
-- [Key Features](#key-features)
-- [Technology Stack](#technology-stack)
-- [Project Structure](#project-structure)
-- [Prerequisites](#prerequisites)
-- [Local Setup](#local-setup)
-- [Database Setup](#database-setup)
-- [Development Commands](#development-commands)
-- [Security Guidelines](#security-guidelines)
-- [Implementation Status](#implementation-status)
+- 🔗 **Live Demo:** [https://travel-planner-virid-pi.vercel.app/](https://travel-planner-virid-pi.vercel.app/)
+- 💻 **GitHub Repository:** [https://github.com/rehanpatwegar/travel-planner](https://github.com/rehanpatwegar/travel-planner)
 
 ---
 
-## Overview
+## ✨ Features
 
-Planning complex multi-city trips often forces travelers to juggle disconnected spreadsheets, maps, booking receipts, and notes. GlobeTrotter bridges this gap by providing an end-to-end travel workspace where you can:
+### 🧳 Trip Planning
+- Create and manage multi-city trips.
+- Organize destinations, activities, and day-wise itineraries.
+- Add, edit, and reorder itinerary activities.
+- View trip details and manage trip schedules.
 
-1. **Map out multi-city routes** with dedicated arrival and departure dates.
-2. **Structure day-by-day itineraries** with time-slotted activities and drag-and-drop reordering.
-3. **Monitor travel budgets** across accommodation, transit, activities, and dining with real-time breakdowns.
-4. **Inspect your schedule** across interactive agenda and calendar views.
-5. **Leverage AI intelligence** to draft personalized itineraries, optimize route pacing, and answer trip-specific questions.
-6. **Share read-only plans** with companions and family via secure links.
+### 🤖 AI-Powered Travel Assistance
+- Generate personalized trip itineraries using AI.
+- Get intelligent recommendations based on trip details.
+- Optimize existing travel plans.
+- Use the Trip Assistant to ask questions and get context-aware travel suggestions.
+
+### 💰 Budget Management
+- Set and track trip budgets.
+- Monitor expenses and spending.
+- View budget breakdowns and financial summaries.
+- Explore budget-conscious trip optimization suggestions.
+
+### ❤️ Trip Health Score
+A dedicated scoring system that evaluates the overall quality of a travel plan across five dimensions:
+
+| Dimension | Weight |
+| --- | :---: |
+| Budget Fit | 20 |
+| Schedule Conflicts | 25 |
+| Daily Workload | 20 |
+| Rest Time | 20 |
+| Travel Feasibility | 15 |
+| **Total** | **100** |
+
+The score helps users identify potential planning issues and improve their itineraries.
+
+### 👥 Group Trip Management
+- Manage shared trip expenses.
+- Track contributions and spending.
+- Split expenses between group members.
+
+### 📅 Calendar & Organization
+- View itinerary schedules in a calendar.
+- Organize activities across travel dates.
+- Manage trip details from a centralized dashboard.
+
+### 🔗 Sharing & Booking
+- Share trip information through supported sharing functionality.
+- Access booking links associated with travel activities.
+- Public sharing availability depends on the database functions and deployment configuration being set up correctly.
 
 ---
 
-## Key Features
+## 🛠️ Tech Stack
 
-- **Multi-City Route Builder:** Connect multiple destinations in chronological sequence with flexible stay durations and transition buffers.
-- **Day-by-Day Activity Scheduling:** Arrange morning, afternoon, and evening plans. Reorder activities with intuitive drag-and-drop.
-- **Budget Tracking & Expense Breakdown:** Allocate category budgets, record expenses, and analyze cost-per-day visual breakdowns.
-- **Interactive Calendar Timeline:** Switch between agenda, weekly, and monthly views to balance travel pacing and prevent scheduling conflicts.
-- **AI Travel Intelligence (Gemini):** Generate structured trip proposals from natural descriptions, optimize stops and timing, and chat contextually with your saved trip data.
-- **Read-Only Itinerary Sharing:** Share clean public links for friends and family while maintaining full privacy and edit-protection for your personal account.
-
----
-
-## Technology Stack
-
-| Layer | Technology |
-|---|---|
-| **Frontend Framework** | [Next.js](https://nextjs.org/) (App Router, React 19, TypeScript) |
-| **Styling & Components** | [Tailwind CSS](https://tailwindcss.com/) & [shadcn/ui](https://ui.shadcn.com/) |
-| **Database & Auth** | [Supabase](https://supabase.com/) (PostgreSQL, Supabase Auth, Row Level Security) |
-| **File Storage** | Supabase Storage |
-| **AI Intelligence** | Google Gemini API (strictly server-side) |
-| **Charts & Visualizations** | [Recharts](https://recharts.org/) |
-| **Calendar Scheduling** | [FullCalendar](https://fullcalendar.io/) |
-| **Drag & Drop** | [dnd-kit](https://dndkit.com/) |
-| **Hosting & Deployment** | [Vercel](https://vercel.com/) |
+| Category | Technologies |
+| --- | --- |
+| Frontend | Next.js, React, TypeScript |
+| Styling | Tailwind CSS, shadcn/ui |
+| Database | Supabase PostgreSQL |
+| Authentication | Supabase Auth |
+| AI Integration | Google Gemini API |
+| Charts | Recharts |
+| Calendar | FullCalendar |
+| Drag & Drop | dnd-kit |
+| Backend | Next.js API Routes |
+| Deployment | Vercel |
+| Version Control | Git & GitHub |
 
 ---
 
-## Project Structure
+## 🏗️ Project Architecture
 
-```text
-travel-planner/
-├── app/
-│   ├── (auth)/                  # Authentication routes (login, signup, forgot-password)
-│   ├── (app)/                   # Protected application routes
-│   │   ├── dashboard/           # User trip dashboard and summaries
-│   │   ├── trips/               # Trip list, new trip, builder, view, budget, calendar
-│   │   ├── search/              # City and activity catalog search
-│   │   └── profile/             # User settings and profile management
-│   ├── share/[slug]/            # Public read-only itinerary view
-│   ├── api/                     # Server-side API routes & AI endpoints
-│   ├── globals.css              # Global styles & Tailwind theme variables
-│   ├── layout.tsx               # Root layout & application metadata
-│   └── page.tsx                 # Product landing page
-├── components/
-│   ├── ui/                      # Reusable primitive UI components (shadcn/ui)
-│   ├── trip/                    # Trip cards, stops, and itinerary builders
-│   ├── charts/                  # Budget and expense visualization components
-│   └── ai/                      # AI generator modals and chat components
-├── db/
-│   ├── schema.sql               # Normalized PostgreSQL schema, constraints, indexes & RLS
-│   └── seed.sql                 # Curated cities and activities sample data
-├── lib/
-│   ├── supabase/                # Browser and server Supabase client factories
-│   └── utils.ts                 # Class merging utility (cn)
-├── public/                      # Static assets and media
-├── .env.example                 # Environment variable templates
-└── package.json                 # Project dependencies and npm scripts
+GlobeTrotter uses a modern full-stack architecture:
+
+- **Frontend:** Next.js App Router and React provide the user interface.
+- **Backend:** Next.js API routes handle server-side operations and AI requests.
+- **Database:** Supabase PostgreSQL stores application data.
+- **Authentication:** Supabase Auth manages user authentication.
+- **AI:** Google Gemini supports itinerary generation and travel assistance.
+- **Deployment:** The application is configured for deployment through Vercel.
+
+---
+
+## 🚀 Getting Started
+
+Follow these steps to run GlobeTrotter locally.
+
+### Prerequisites
+- Node.js 20.9 or later
+- npm
+- Git
+- A Supabase project
+- A Google Gemini API key
+
+### 1. Clone the Repository
+```bash
+git clone https://github.com/rehanpatwegar/travel-planner.git
+cd travel-planner
 ```
 
----
+### 2. Install Dependencies
+```bash
+npm install
+```
 
-## Prerequisites
+### 3. Configure Environment Variables
+Create your local environment file.
 
-Before setting up the project locally, ensure you have:
+**Windows PowerShell:**
+```powershell
+Copy-Item .env.example .env.local
+```
 
-- **Node.js:** `v18.18.0` or later (`v24.x` recommended)
-- **npm:** `v9.x` or later (`v11.x` recommended)
-- **Supabase Account:** A free [Supabase](https://supabase.com/) project for PostgreSQL and authentication.
+**macOS / Linux:**
+```bash
+cp .env.example .env.local
+```
 
----
+Add the required Supabase and Gemini credentials using the variable names documented in `.env.example`.
 
-## Local Setup
+Keep `.env.local` private. Never commit API keys, service-role credentials, or other secrets to GitHub.
 
-1. **Clone the repository:**
-   ```bash
-   git clone https://github.com/rehanpatwegar/travel-planner.git
-   cd travel-planner
-   ```
+### 4. Configure the Database
+1. Create a Supabase project.
+2. Open the Supabase SQL Editor.
+3. Review the database setup scripts in the repository.
+4. Apply the base schema and seed data in the documented order.
+5. Review and apply applicable migrations in sequence.
 
-2. **Install dependencies:**
-   ```bash
-   npm install
-   ```
+> [!IMPORTANT]
+> Do not execute archived SQL or proposal-only scripts as ordinary setup migrations. In particular, public-sharing RPC proposals must be reviewed and deployed separately before relying on those database functions.
 
-3. **Configure environment variables:**
-   Copy the example environment file to `.env.local`:
-   ```bash
-   cp .env.example .env.local
-   ```
+### 5. Run the Development Server
+```bash
+npm run dev
+```
 
-4. **Add your credentials to `.env.local`:**
-   ```env
-   # Supabase Configuration (from Supabase Dashboard > Project Settings > API)
-   NEXT_PUBLIC_SUPABASE_URL=https://your-project-id.supabase.co
-   NEXT_PUBLIC_SUPABASE_ANON_KEY=your-supabase-anon-key
-
-   # Server-side Secrets (used in later implementation parts)
-   # SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
-   # GEMINI_API_KEY=your-gemini-api-key
-   ```
+Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 ---
 
-## Database Setup
+## 🧪 Quality Checks
 
-GlobeTrotter uses Supabase PostgreSQL with Row Level Security (RLS) enabled on all tables.
+Run the following checks before submitting changes:
 
-### 1. Apply Schema
-1. Open your project on the [Supabase Dashboard](https://supabase.com/dashboard).
-2. Navigate to **SQL Editor** in the left sidebar.
-3. Click **New query**, open the local [`db/schema.sql`](file:///c:/Users/Rehan/Files%20needed/Buildathon/2.0/travel-planner/db/schema.sql) file, copy its contents, paste them into the editor, and click **Run**.
-4. This creates all necessary tables, constraints, foreign keys, triggers, and Row Level Security policies:
-   - `profiles` (synced automatically with `auth.users`)
-   - `cities` (curated destinations catalog)
-   - `activities` (curated attractions per city)
-   - `trips` (user travel plans)
-   - `trip_stops` (multi-city sequence)
-   - `itinerary_items` (day-by-day scheduled plans)
-   - `expenses` (budget tracking and categorized costs)
-   - `shared_trips` (public read-only share configurations)
+```bash
+npm run lint
+npm run build
+npx tsc --noEmit
+```
 
-### 2. Apply Seed Data (Optional for Development)
-1. In the Supabase **SQL Editor**, open [`db/seed.sql`](file:///c:/Users/Rehan/Files%20needed/Buildathon/2.0/travel-planner/db/seed.sql).
-2. Copy and paste the script, then click **Run**.
-3. This populates curated destinations (Paris, Lucerne, Florence, Tokyo, New York City, Barcelona) and their corresponding activities.
+These checks help identify linting issues, production build errors, and TypeScript errors.
+
+Project verification scripts can also be found in the `scripts/` directory.
+
+Local automated checks do not replace verification against a configured live Supabase database.
 
 ---
 
-## Authentication Setup (Supabase Auth)
+## 🔐 Security Notes
 
-GlobeTrotter uses Supabase Auth with server-side cookie verification and SSR middleware.
-
-### Required Supabase Dashboard Settings:
-1. Open your project on the [Supabase Dashboard](https://supabase.com/dashboard).
-2. Navigate to **Authentication → URL Configuration**.
-3. **Site URL:**
-   - Set to `http://localhost:3000` for local development.
-   - Set to your custom domain or Vercel URL in production.
-4. **Redirect URLs:** Add the following URLs to the whitelist:
-   - `http://localhost:3000/auth/callback`
-   - `http://localhost:3000/reset-password`
-   - `http://localhost:3000/dashboard`
-5. **Email Auth Configuration:**
-   - Under **Authentication → Providers → Email**, ensure Email provider is enabled.
-   - If *Confirm email* is enabled, users will receive a verification email upon signup before their session is activated.
-   - If *Confirm email* is disabled, users will be logged in immediately upon registration.
+- Keep environment variables and API credentials out of version control.
+- Use server-side handling for sensitive API operations.
+- Apply database policies according to the application's ownership and access requirements.
+- Review SQL migrations before applying them to a live database.
+- Do not assume proposal-only database functions or security changes are deployed.
+- Verify production database permissions and policies independently.
 
 ---
 
-## Development Commands
+## 📁 Project Structure
 
-| Command | Description |
-|---|---|
-| `npm run dev` | Starts the Next.js development server at [http://localhost:3000](http://localhost:3000) |
-| `npm run build` | Compiles an optimized production build |
-| `npm run start` | Starts the production server |
-| `npm run lint` | Runs ESLint 9 checks using flat config |
+The project follows the Next.js App Router structure. Important areas include:
 
----
-
-## Security Guidelines
-
-- **Secrets Isolation:** Never commit `.env.local`, API keys, or database service-role keys to Git. Staged commits must never include private tokens.
-- **Client vs. Server Credentials:** Only `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` may be referenced in browser-accessible client code.
-- **Server-Side Protection:** The Gemini API key and Supabase Service Role key are strictly reserved for server-side API routes and Server Actions.
-- **Row Level Security (RLS):** All user data tables enforce strict PostgreSQL RLS policies. Users can only query, modify, or delete their own trips, itinerary items, and expenses.
+| Directory / File | Purpose |
+| --- | --- |
+| `app/` | Application routes and pages |
+| `components/` | Reusable UI components |
+| `lib/` | Shared utilities, application logic, and scoring |
+| `scripts/` | Verification and utility scripts |
+| `db/` | Database schema, migrations, and proposals |
+| `public/` | Static assets |
+| `.env.example` | Environment variable template |
+| `package.json` | Dependencies and project scripts |
 
 ---
 
-## Implementation Status
+## 🔮 Future Scope
 
-GlobeTrotter is developed through a structured, modular plan:
-
-| Phase | Milestone | Status |
-|---|---|---|
-| **Part 1** | Project Setup, Next.js App Router, Tailwind CSS, shadcn/ui, Supabase Client & SaaS Landing Page | ✅ Completed |
-| **Part 2** | Normalized Database Schema (`db/schema.sql`), Seed Data (`db/seed.sql`) & Enhanced Documentation | ✅ Completed |
-| **Part 3** | Authentication (Supabase Auth Login, Signup, Forgot Password & Profiles) | ✅ Completed |
-| **Part 4** | Dashboard, Trip Creation & My Trips Management | ✅ Completed |
-| **Part 5** | City & Activity Catalog Search & Filters | ✅ Completed |
-| **Part 6** | Day-by-Day Itinerary Builder & Drag-and-Drop Sequencing | ✅ Completed |
-| **Part 7** | Itinerary View & Clean Agenda Summary | ✅ Completed |
-| **Part 8** | Interactive Calendar Timeline & Rescheduling | ✅ Completed |
-| **Part 9** | Trip Budget Analytics, Expense Logging & Visual Charts | ✅ Completed |
-| **Part 10** | AI Trip Generator (Gemini Structured Generation, Heuristic Fallback, Draft Review & Database Persistence) | ✅ Completed |
-| **Part 11** | AI Itinerary Optimizer & Context-Aware Trip Assistant (Schedule Pacing, Diff Review & Safe Apply, Grounded Chat Assistant) | ✅ Completed |
-| **Part 12** | End-to-End Testing, UI Polish & Production Deployment | ⏳ Planned |
+Potential improvements include:
+- Real-time weather-aware itinerary recommendations.
+- Interactive maps and route visualization.
+- More advanced collaborative trip planning.
+- Expanded destination and activity catalogs.
+- Enhanced AI-powered budget optimization.
+- Additional travel insights and analytics.
 
 ---
 
-## License
+## 🤝 Contributing
 
-This project is licensed under the MIT License.
+Contributions and suggestions are welcome.
+
+1. Fork the repository.
+2. Create a feature branch.
+3. Make your changes.
+4. Run the relevant quality checks.
+5. Submit a pull request.
+
+---
+
+## 👨‍💻 Author
+
+Developed by [Rehan Patwegar](https://github.com/rehanpatwegar) <br />
+GitHub: [@rehanpatwegar](https://github.com/rehanpatwegar)
+
+---
+
+⭐ If you find GlobeTrotter interesting, consider giving the repository a star!
